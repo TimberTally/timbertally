@@ -1,197 +1,208 @@
-// --- START OF script.js ---
+// --- START OF script.js (TimberTally v7) ---
 
-// --- Service Worker Registration and Update Handling ---
+// ============================================================
+// SERVICE WORKER REGISTRATION & UPDATE HANDLING
+// ============================================================
 if ('serviceWorker' in navigator) {
     const updateNotification = document.getElementById('updateNotification');
     const updateNowBtn = document.getElementById('updateNowBtn');
     const updateDismissBtn = document.getElementById('updateDismissBtn');
     let newWorker;
 
-    function showUpdateBar() { if (updateNotification) { console.log('[App] Showing update bar.'); updateNotification.style.display = 'flex'; } else { console.error('[App] Update notification element not found.'); } }
-    function hideUpdateBar() { if (updateNotification) { updateNotification.style.display = 'none'; } }
+    function showUpdateBar() {
+        if (updateNotification) updateNotification.style.display = 'flex';
+    }
+    function hideUpdateBar() {
+        if (updateNotification) updateNotification.style.display = 'none';
+    }
 
     window.addEventListener('load', () => {
         try {
             navigator.serviceWorker.register('./service-worker.js')
                 .then(registration => {
-                    console.log('TimberTally ServiceWorker registration successful with scope: ', registration.scope);
-                    if (registration.waiting) { console.log('[App] New worker is waiting immediately.'); newWorker = registration.waiting; showUpdateBar(); }
+                    if (registration.waiting) { newWorker = registration.waiting; showUpdateBar(); }
                     registration.addEventListener('updatefound', () => {
-                        console.log('[App] New service worker found. Installing...');
                         const installingWorker = registration.installing;
                         if (installingWorker) {
-                            if (typeof newWorker === 'undefined' || !newWorker) { newWorker = installingWorker; }
+                            if (!newWorker) newWorker = installingWorker;
                             installingWorker.addEventListener('statechange', () => {
-                                if (installingWorker.state === 'installed') {
-                                    console.log('[App] New service worker installed.');
-                                    if (navigator.serviceWorker.controller) {
-                                        console.log('[App] New worker is waiting (detected via updatefound). Showing update bar.');
-                                        if(registration.waiting) newWorker = registration.waiting;
-                                        showUpdateBar();
-                                    } else { console.log('[App] Service worker installed for the first time.'); }
-                                } else { console.log(`[App] Installing worker state changed: ${installingWorker.state}`); }
+                                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    if (registration.waiting) newWorker = registration.waiting;
+                                    showUpdateBar();
+                                }
                             });
-                        } else { console.warn('[App] registration.installing was null inside updatefound listener.'); }
+                        }
                     });
-                    setInterval(() => { console.log('[App] Checking for service worker updates (hourly)...'); registration.update().catch(err => console.error('[App] Error during periodic SW update check:', err)); }, 3600000);
+                    setInterval(() => registration.update().catch(() => {}), 3600000);
                 })
-                .catch(err => console.error('TimberTally ServiceWorker registration failed: ', err));
+                .catch(err => console.error('SW registration failed:', err));
 
             let refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', () => { console.log('[App] Controller changed.'); if (!refreshing) { console.log('[App] Reloading page...'); window.location.reload(); refreshing = true; } });
-        } catch (e) { console.error('Error during ServiceWorker registration setup:', e); }
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) { window.location.reload(); refreshing = true; }
+            });
+        } catch (e) { console.error('SW setup error:', e); }
 
-        if (updateNowBtn) { updateNowBtn.addEventListener('click', () => { console.log('[App] Update Now clicked.'); if (newWorker) { newWorker.postMessage({ type: 'SKIP_WAITING' }); hideUpdateBar(); console.log('[App] SKIP_WAITING sent.'); } else { console.warn('[App] No waiting worker to activate.'); hideUpdateBar(); } }); } else { console.error('[App] Update Now button not found.'); }
-        if (updateDismissBtn) { updateDismissBtn.addEventListener('click', () => { console.log('[App] Dismissed update.'); hideUpdateBar(); }); } else { console.error('[App] Update Dismiss button not found.'); }
-    });
-} else { console.log('TimberTally: Service Workers not supported.'); }
-// --- End of Service Worker Registration ---
-
-// --- CUSTOM CHART.JS PLUGIN FOR BACKGROUND COLOR ---
-if (typeof Chart !== 'undefined') {
-    const customCanvasBackgroundColorPlugin = {
-      id: 'customCanvasBackgroundColor',
-      beforeDraw: (chart, args, options) => {
-        if (options && options.color) {
-          const {ctx} = chart;
-          ctx.save();
-          ctx.globalCompositeOperation = 'destination-over';
-          ctx.fillStyle = options.color;
-          ctx.fillRect(0, 0, chart.width, chart.height);
-          ctx.restore();
+        if (updateNowBtn) {
+            updateNowBtn.addEventListener('click', () => {
+                if (newWorker) { newWorker.postMessage({ type: 'SKIP_WAITING' }); hideUpdateBar(); }
+                else hideUpdateBar();
+            });
         }
-      }
-    };
-    Chart.register(customCanvasBackgroundColorPlugin);
-    console.log("Registered customCanvasBackgroundColorPlugin for Chart.js");
-} else {
-    console.error("Chart object not found for plugin registration. Ensure Chart.js is loaded before this script.");
+        if (updateDismissBtn) updateDismissBtn.addEventListener('click', hideUpdateBar);
+    });
 }
-// --- END OF CUSTOM CHART.JS PLUGIN ---
 
+// ============================================================
+// CHART.JS BACKGROUND PLUGIN
+// ============================================================
+if (typeof Chart !== 'undefined') {
+    Chart.register({
+        id: 'customCanvasBackgroundColor',
+        beforeDraw: (chart, args, options) => {
+            if (options?.color) {
+                const { ctx } = chart;
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = options.color;
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+            }
+        }
+    });
+}
 
-// --- Application Logic ---
+// ============================================================
+// MAIN APPLICATION LOGIC
+// ============================================================
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- Get DOM Elements ---
-    const dbhSelect = document.getElementById('dbhSelect');
-    const speciesSelect = document.getElementById('speciesSelect');
-    const logsSelect = document.getElementById('logsSelect');
-    const cutCheckbox = document.getElementById('cutCheckbox');
-    const notesTextarea = document.getElementById('notesTextarea');
-    const getLocationBtn = document.getElementById('getLocationBtn');
-    const locationStatus = document.getElementById('locationStatus');
-    const submitBtn = document.getElementById('submitBtn');
-    const saveCsvBtn = document.getElementById('saveCsvBtn');
-    const deleteBtn = document.getElementById('deleteBtn');
-    const deleteAllBtn = document.getElementById('deleteAllBtn');
-    const entriesTableBody = document.getElementById('entriesTableBody');
-    const noEntriesRow = document.getElementById('noEntriesRow');
-    const entryCountSpan = document.getElementById('entryCount');
-    const feedbackMsg = document.getElementById('feedbackMsg');
-    const plotDecrementBtn = document.getElementById('plotDecrementBtn');
-    const plotIncrementBtn = document.getElementById('plotIncrementBtn');
-    const plotNumberDisplay = document.getElementById('plotNumberDisplay');
-    const neededPlotsValue = document.getElementById('neededPlotsValue');
-    const areaDecrementBtn = document.getElementById('areaDecrementBtn');
-    const areaIncrementBtn = document.getElementById('areaIncrementBtn');
-    const areaLetterDisplay = document.getElementById('areaLetterDisplay');
-    const settingsSection = document.getElementById('settingsSection');
-    const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
-    const bafSelect = document.getElementById('bafSelect');
-    const logRuleSelect = document.getElementById('logRuleSelect');
-    const formClassSelect = document.getElementById('formClassSelect');
-    const formClassGroup = document.getElementById('formClassGroup');
+    // --- DOM References ---
+    const dbhSelect           = document.getElementById('dbhSelect');
+    const speciesSelect       = document.getElementById('speciesSelect');
+    const logsSelect          = document.getElementById('logsSelect');
+    const cutCheckbox         = document.getElementById('cutCheckbox');
+    const ugsCheckbox         = document.getElementById('ugsCheckbox');
+    const notesTextarea       = document.getElementById('notesTextarea');
+    const getLocationBtn      = document.getElementById('getLocationBtn');
+    // Notes tab
+    const standNotesTextarea  = document.getElementById('standNotesTextarea');
+    const clearNotesBtn       = document.getElementById('clearNotesBtn');
+    const notesSavedStatus    = document.getElementById('notesSavedStatus');
+    // Dark mode
+    const darkModeSelect      = document.getElementById('darkModeSelect');
+    // Install prompt
+    const installBanner       = document.getElementById('installBanner');
+    const installAcceptBtn    = document.getElementById('installAcceptBtn');
+    const installDismissBtn   = document.getElementById('installDismissBtn');
+    const installAppBtn       = document.getElementById('installAppBtn');
+    const locationStatus      = document.getElementById('locationStatus');
+    const submitBtn           = document.getElementById('submitBtn');
+    const saveCsvBtn          = document.getElementById('saveCsvBtn');
+    const deleteBtn           = document.getElementById('deleteBtn');
+    const deleteAllBtn        = document.getElementById('deleteAllBtn');
+    const entriesTableBody    = document.getElementById('entriesTableBody');
+    const noEntriesRow        = document.getElementById('noEntriesRow');
+    const entryCountSpan      = document.getElementById('entryCount');
+    const feedbackMsg         = document.getElementById('feedbackMsg');
+    const plotDecrementBtn    = document.getElementById('plotDecrementBtn');
+    const plotIncrementBtn    = document.getElementById('plotIncrementBtn');
+    const plotNumberDisplay   = document.getElementById('plotNumberDisplay');
+    const neededPlotsValue    = document.getElementById('neededPlotsValue');
+    const areaDecrementBtn    = document.getElementById('areaDecrementBtn');
+    const areaIncrementBtn    = document.getElementById('areaIncrementBtn');
+    const areaLetterDisplay   = document.getElementById('areaLetterDisplay');
+    const settingsSection     = document.getElementById('settingsSection');
+    const toggleSettingsBtn   = document.getElementById('toggleSettingsBtn');
+    const bafSelect           = document.getElementById('bafSelect');
+    const logRuleSelect       = document.getElementById('logRuleSelect');
+    const formClassSelect     = document.getElementById('formClassSelect');
+    const formClassGroup      = document.getElementById('formClassGroup');
     const generateGraphsSelect = document.getElementById('generateGraphsSelect');
-    const settingsFeedback = document.getElementById('settingsFeedback');
+    const settingsFeedback    = document.getElementById('settingsFeedback');
     const manualUpdateCheckBtn = document.getElementById('manualUpdateCheckBtn');
-    const updateCheckStatus = document.getElementById('updateCheckStatus');
-    const showPrivacyPolicyBtn = document.getElementById('showPrivacyPolicyBtn');
-    const showReadmeBtn = document.getElementById('showReadmeBtn');
-    const showTreeKeyBtn = document.getElementById('showTreeKeyBtn');
-    const speciesManagementSection = document.getElementById('speciesManagementSection');
-    const toggleSpeciesMgmtBtn = document.getElementById('toggleSpeciesMgmtBtn');
-    const newSpeciesInput = document.getElementById('newSpeciesInput');
-    const addSpeciesBtn = document.getElementById('addSpeciesBtn');
+    const updateCheckStatus   = document.getElementById('updateCheckStatus');
+    const showInfoBtn         = document.getElementById('showInfoBtn');
+    const showTreeKeyBtn      = document.getElementById('showTreeKeyBtn');
+    const newSpeciesInput     = document.getElementById('newSpeciesInput');
+    const addSpeciesBtn       = document.getElementById('addSpeciesBtn');
     const removeSpeciesSelect = document.getElementById('removeSpeciesSelect');
-    const removeSpeciesBtn = document.getElementById('removeSpeciesBtn');
+    const removeSpeciesBtn    = document.getElementById('removeSpeciesBtn');
     const speciesMgmtFeedback = document.getElementById('speciesMgmtFeedback');
-    const projectManagementSection = document.getElementById('projectManagementSection');
-    const toggleProjectMgmtBtn = document.getElementById('toggleProjectMgmtBtn');
-    const projectNameInput = document.getElementById('projectNameInput');
-    const saveProjectBtn = document.getElementById('saveProjectBtn');
-    const loadProjectSelect = document.getElementById('loadProjectSelect');
-    const loadProjectBtn = document.getElementById('loadProjectBtn');
-    const deleteProjectBtn = document.getElementById('deleteProjectBtn');
-    const csvFileInput = document.getElementById('csvFileInput');
-    const loadCsvBtn = document.getElementById('loadCsvBtn');
+    const projectNameInput    = document.getElementById('projectNameInput');
+    const saveProjectBtn      = document.getElementById('saveProjectBtn');
+    const loadProjectSelect   = document.getElementById('loadProjectSelect');
+    const loadProjectBtn      = document.getElementById('loadProjectBtn');
+    const deleteProjectBtn    = document.getElementById('deleteProjectBtn');
+    const csvFileInput        = document.getElementById('csvFileInput');
+    const loadCsvBtn          = document.getElementById('loadCsvBtn');
     const projectMgmtFeedback = document.getElementById('projectMgmtFeedback');
-    const entryView = document.getElementById('entryView');
-    const tallyView = document.getElementById('tallyView');
-    const viewTallyBtn = document.getElementById('viewTallyBtn');
-    const backToEntryBtn = document.getElementById('backToEntryBtn');
-    const tallyResultsContainer = document.getElementById('tallyResults');
-    const showCompassBtn = document.getElementById('showCompassBtn');
-    const compassContainer = document.getElementById('compassContainer');
-    const compassNeedle = document.getElementById('compassNeedle');
-    const compassHeading = document.getElementById('compassHeading');
-    const compassSource = document.getElementById('compassSource');
-    const closeCompassBtn = document.getElementById('closeCompassBtn');
-    const treeKeyModal = document.getElementById('treeKeyModal');
-    const closeTreeKeyBtn = document.getElementById('closeTreeKeyBtn');
+    const showCompassBtn      = document.getElementById('showCompassBtn');
+    const compassContainer    = document.getElementById('compassContainer');
+    const compassNeedle       = document.getElementById('compassNeedle');
+    const compassHeading      = document.getElementById('compassHeading');
+    const compassSource       = document.getElementById('compassSource');
+    const closeCompassBtn     = document.getElementById('closeCompassBtn');
+    const treeKeyModal        = document.getElementById('treeKeyModal');
+    const closeTreeKeyBtn     = document.getElementById('closeTreeKeyBtn');
     const closeTreeKeyBtnBottom = document.getElementById('closeTreeKeyBtnBottom');
+    const autosaveStatus      = document.getElementById('autosaveStatus');
+    const tallyAreaSelect     = document.getElementById('tallyAreaSelect');
+    const tallySummaryCards   = document.getElementById('tallySummaryCards');
+    const tallyResults        = document.getElementById('tallyResults');
+    const tallyChartsContainer = document.getElementById('tallyChartsContainer');
+    const calculateStockingBtn = document.getElementById('calculateStockingBtn');
+    const stockingResults     = document.getElementById('stockingResults');
+    const stockingStatsTable  = document.getElementById('stockingStatsTable');
+    const stockingNoData      = document.getElementById('stockingNoData');
+    const zipExportSelect     = document.getElementById('zipExportSelect');
 
-    // --- Data Storage Keys ---
-    const STORAGE_KEY = 'timberTallyTempSession';
-    const SPECIES_STORAGE_KEY = 'timberTallyCustomSpecies';
-    const PROJECTS_STORAGE_KEY = 'timberTallyProjects';
-    const SETTINGS_STORAGE_KEY = 'timberTallySettings';
+    // --- Storage Keys ---
+    // Everything is stored through storage.js (window.TTStore) under "tt3." keys.
+    const Store = window.TTStore;
+    const SPECIES_STORAGE_KEY  = Store.K.species;
+    const SETTINGS_STORAGE_KEY = Store.K.settings;
 
     // --- Constants ---
     const PRIVACY_POLICY_URL = 'https://timbertally.github.io/TimberTally/privacy.html';
-    const README_URL = 'https://github.com/TimberTally/TimberTally/blob/main/README.md';
-    const BA_CONST = 0.005454;
-    const MIN_PLOT_NUMBER = 1;
-    const MAX_PLOT_NUMBER = 999;
-    const VALID_DOYLE_FORM_CLASSES = [70, 72, 74, 76, 78, 80, 82, 84, 86];
-    const areaLetters = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
-    const DEFAULT_SPECIES = ["White Oak", "Red Oak", "Yellow-poplar", "Hickory", "Red Maple","Black Walnut", "Beech", "Eastern redcedar", "Elm", "Ash", "Chestnut Oak","Black Cherry", "Hackberry", "Black Gum", "MISC", "Sugar Maple"].sort();
+    const README_URL         = 'https://github.com/TimberTally/TimberTally/blob/main/README.md';
+    const MIN_PLOT_NUMBER    = 1;
+    const MAX_PLOT_NUMBER    = 999;
+    const areaLetters        = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
 
-    // --- State Variables ---
-    let collectedData = [];
-    let currentLocation = null;
-    let feedbackTimeout = null;
-    let settingsFeedbackTimeout = null;
-    let speciesFeedbackTimeout = null;
-    let projectFeedbackTimeout = null;
-    let updateStatusTimeout = null;
-    let savedProjects = {};
-    let currentPlotNumber = 1;
-    let currentAreaIndex = 0;
-    let currentBaf = 10;
-    let currentLogRule = 'Doyle';
-    let currentFormClass = 78;
+    // --- State ---
+    let collectedData       = [];
+    let currentLocation     = null;
+    /** The open project: the saved copy of everything below (see saveSessionData). */
+    let currentProject      = null;
+    let currentPlotNumber   = 1;
+    let currentAreaIndex    = 0;
+    let currentBaf          = 10;
+    let currentLogRule      = 'Doyle';
+    let currentFormClass    = 78;
     let currentGenerateGraphs = 'No';
-    let currentSpeciesList = [];
+    let currentZipExport    = 'No';
+    let currentDarkMode     = 'off';
+    let deferredInstallPrompt = null;   // holds the beforeinstallprompt event
+    let currentSpeciesList  = [];
+    let autosaveTimer       = null;
+    let autosaveInterval    = null;
+    let stockingChartInstance = null;
 
-    // --- Volume Tables (FC78 BASE) ---
-    const DOYLE_FC78_VOLUMES = { /* ... unchanged ... */
-        '10': { '0.5': 0, '1.0': 14, '1.5': 17, '2.0': 20, '2.5': 21, '3.0': 22 },'11': { '0.5': 0, '1.0': 22, '1.5': 27, '2.0': 32, '2.5': 35, '3.0': 38 },'12': { '0.5': 0, '1.0': 29, '1.5': 36, '2.0': 43, '2.5': 48, '3.0': 53, '3.5': 54, '4.0': 56 },'13': { '0.5': 0, '1.0': 38, '1.5': 48, '2.0': 59, '2.5': 66, '3.0': 73, '3.5': 76, '4.0': 80 },'14': { '0.5': 0, '1.0': 48, '1.5': 62, '2.0': 75, '2.5': 84, '3.0': 93, '3.5': 98, '4.0': 103 },'15': { '0.5': 0, '1.0': 60, '1.5': 78, '2.0': 96, '2.5': 108, '3.0': 121, '3.5': 128, '4.0': 136 },'16': { '0.5': 0, '1.0': 72, '1.5': 94, '2.0': 116, '2.5': 132, '3.0': 149, '3.5': 160, '4.0': 170 },'17': { '0.5': 0, '1.0': 86, '1.5': 113, '2.0': 140, '2.5': 161, '3.0': 182, '3.5': 196, '4.0': 209 },'18': { '0.5': 0, '1.0': 100, '1.5': 132, '2.0': 164, '2.5': 190, '3.0': 215, '3.5': 232, '4.0': 248 },'19': { '0.5': 0, '1.0': 118, '1.5': 156, '2.0': 195, '2.5': 225, '3.0': 256, '3.5': 276, '4.0': 297 },'20': { '0.5': 0, '1.0': 135, '1.5': 180, '2.0': 225, '2.5': 261, '3.0': 297, '3.5': 322, '4.0': 346, '4.5': 364, '5.0': 383 },'21': { '0.5': 0, '1.0': 154, '1.5': 207, '2.0': 260, '2.5': 302, '3.0': 344, '3.5': 374, '4.0': 404, '4.5': 428, '5.0': 452 },'22': { '0.5': 0, '1.0': 174, '1.5': 234, '2.0': 295, '2.5': 344, '3.0': 392, '3.5': 427, '4.0': 462, '4.5': 492, '5.0': 521 },'23': { '0.5': 0, '1.0': 195, '1.5': 264, '2.0': 332, '2.5': 388, '3.0': 444, '3.5': 483, '4.0': 522, '4.5': 558, '5.0': 594 },'24': { '0.5': 0, '1.0': 216, '1.5': 293, '2.0': 370, '2.5': 433, '3.0': 496, '3.5': 539, '4.0': 582, '4.5': 625, '5.0': 668 },'25': { '0.5': 0, '1.0': 241, '1.5': 328, '2.0': 414, '2.5': 486, '3.0': 558, '3.5': 609, '4.0': 660, '4.5': 709, '5.0': 758 },'26': { '0.5': 0, '1.0': 266, '1.5': 362, '2.0': 459, '2.5': 539, '3.0': 619, '3.5': 678, '4.0': 737, '4.5': 793, '5.0': 849 },'27': { '0.5': 0, '1.0': 292, '1.5': 398, '2.0': 505, '2.5': 594, '3.0': 684, '3.5': 749, '4.0': 814, '4.5': 877, '5.0': 940 },'28': { '0.5': 0, '1.0': 317, '1.5': 434, '2.0': 551, '2.5': 651, '3.0': 750, '3.5': 820, '4.0': 890, '4.5': 961, '5.0': 1032, '5.5': 1096, '6.0': 1161 },'29': { '0.5': 0, '1.0': 346, '1.5': 475, '2.0': 604, '2.5': 714, '3.0': 824, '3.5': 902, '4.0': 980, '4.5': 1061, '5.0': 1142, '5.5': 1218, '6.0': 1294 },'30': { '0.5': 0, '1.0': 376, '1.5': 517, '2.0': 658, '2.5': 778, '3.0': 898, '3.5': 984, '4.0': 1069, '4.5': 1160, '5.0': 1251, '5.5': 1339, '6.0': 1427 },'31': { '0.5': 0, '1.0': 408, '1.5': 562, '2.0': 717, '2.5': 850, '3.0': 983, '3.5': 1080, '4.0': 1176, '4.5': 1273, '5.0': 1370, '5.5': 1470, '6.0': 1570 },'32': { '0.5': 0, '1.0': 441, '1.5': 608, '2.0': 776, '2.5': 922, '3.0': 1068, '3.5': 1176, '4.0': 1283, '4.5': 1386, '5.0': 1488, '5.5': 1600, '6.0': 1712 },'33': { '0.5': 0, '1.0': 474, '1.5': 654, '2.0': 835, '2.5': 994, '3.0': 1152, '3.5': 1268, '4.0': 1385, '4.5': 1497, '5.0': 1609, '5.5': 1734, '6.0': 1858 },'34': { '0.5': 0, '1.0': 506, '1.5': 700, '2.0': 894, '2.5': 1064, '3.0': 1235, '3.5': 1361, '4.0': 1487, '4.5': 1608, '5.0': 1730, '5.5': 1866, '6.0': 2003 },'35': { '0.5': 0, '1.0': 544, '1.5': 754, '2.0': 964, '2.5': 1149, '3.0': 1334, '3.5': 1472, '4.0': 1610, '4.5': 1743, '5.0': 1876, '5.5': 2020, '6.0': 2163 },'36': { '0.5': 0, '1.0': 581, '1.5': 808, '2.0': 1035, '2.5': 1234, '3.0': 1434, '3.5': 1583, '4.0': 1732, '4.5': 1878, '5.0': 2023, '5.5': 2173, '6.0': 2323 },'37': { '0.5': 0, '1.0': 618, '1.5': 860, '2.0': 1102, '2.5': 1318, '3.0': 1534, '3.5': 1694, '4.0': 1854, '4.5': 2013, '5.0': 2172, '5.5': 2332, '6.0': 2492 },'38': { '0.5': 0, '1.0': 655, '1.5': 912, '2.0': 1170, '2.5': 1402, '3.0': 1635, '3.5': 1805, '4.0': 1975, '4.5': 2148, '5.0': 2322, '5.5': 2491, '6.0': 2660 },'39': { '0.5': 0, '1.0': 698, '1.5': 974, '2.0': 1250, '2.5': 1498, '3.0': 1746, '3.5': 1932, '4.0': 2118, '4.5': 2298, '5.0': 2479, '5.5': 2662, '6.0': 2844 },'40': { '0.5': 0, '1.0': 740, '1.5': 1035, '2.0': 1330, '2.5': 1594, '3.0': 1858, '3.5': 2059, '4.0': 2260, '4.5': 2448, '5.0': 2636, '5.5': 2832, '6.0': 3027 }
-    };
-    const SCRIBNER_FC78_VOLUMES = { /* ... unchanged ... */
-        '10': { '1.0': 28, '1.5': 36, '2.0': 44, '2.5': 48, '3.0': 52 },'11': { '1.0': 38, '1.5': 49, '2.0': 60, '2.5': 67, '3.0': 74 },'12': { '1.0': 47, '1.5': 61, '2.0': 75, '2.5': 85, '3.0': 95, '3.5': 100, '4.0': 106 },'13': { '1.0': 58, '1.5': 76, '2.0': 94, '2.5': 107, '3.0': 120, '3.5': 128, '4.0': 136 },'14': { '1.0': 69, '1.5': 92, '2.0': 114, '2.5': 130, '3.0': 146, '3.5': 156, '4.0': 166 },'15': { '1.0': 82, '1.5': 109, '2.0': 136, '2.5': 157, '3.0': 178, '3.5': 192, '4.0': 206 },'16': { '1.0': 95, '1.5': 127, '2.0': 159, '2.5': 185, '3.0': 211, '3.5': 229, '4.0': 247 },'17': { '1.0': 109, '1.5': 146, '2.0': 184, '2.5': 215, '3.0': 246, '3.5': 268, '4.0': 289 },'18': { '1.0': 123, '1.5': 166, '2.0': 209, '2.5': 244, '3.0': 280, '3.5': 306, '4.0': 331 },'19': { '1.0': 140, '1.5': 190, '2.0': 240, '2.5': 281, '3.0': 322, '3.5': 352, '4.0': 382 },'20': { '1.0': 157, '1.5': 214, '2.0': 270, '2.5': 317, '3.0': 364, '3.5': 398, '4.0': 432, '4.5': 459, '5.0': 486 },'21': { '1.0': 176, '1.5': 240, '2.0': 304, '2.5': 358, '3.0': 411, '3.5': 450, '4.0': 490, '4.5': 523, '5.0': 556 },'22': { '1.0': 194, '1.5': 266, '2.0': 338, '2.5': 398, '3.0': 458, '3.5': 504, '4.0': 549, '4.5': 588, '5.0': 626 },'23': { '1.0': 214, '1.5': 294, '2.0': 374, '2.5': 441, '3.0': 508, '3.5': 558, '4.0': 607, '4.5': 652, '5.0': 698 },'24': { '1.0': 234, '1.5': 322, '2.0': 409, '2.5': 484, '3.0': 558, '3.5': 611, '4.0': 665, '4.5': 718, '5.0': 770 },'25': { '1.0': 258, '1.5': 355, '2.0': 452, '2.5': 534, '3.0': 617, '3.5': 678, '4.0': 740, '4.5': 799, '5.0': 858 },'26': { '1.0': 281, '1.5': 388, '2.0': 494, '2.5': 585, '3.0': 676, '3.5': 745, '4.0': 814, '4.5': 880, '5.0': 945 },'27': { '1.0': 304, '1.5': 420, '2.0': 536, '2.5': 636, '3.0': 736, '3.5': 811, '4.0': 886, '4.5': 959, '5.0': 1032 },'28': { '1.0': 327, '1.5': 452, '2.0': 578, '2.5': 686, '3.0': 795, '3.5': 877, '4.0': 959, '4.5': 1040, '5.0': 1120, '5.5': 1190, '6.0': 1261 },'29': { '1.0': 354, '1.5': 491, '2.0': 628, '2.5': 746, '3.0': 864, '3.5': 953, '4.0': 1042, '4.5': 1132, '5.0': 1222, '5.5': 1306, '6.0': 1389 },'30': { '1.0': 382, '1.5': 530, '2.0': 678, '2.5': 806, '3.0': 933, '3.5': 1028, '4.0': 1124, '4.5': 1224, '5.0': 1325, '5.5': 1421, '6.0': 1517 },'31': { '1.0': 411, '1.5': 571, '2.0': 731, '2.5': 871, '3.0': 1011, '3.5': 1117, '4.0': 1223, '4.5': 1328, '5.0': 1434, '5.5': 1541, '6.0': 1648 },'32': { '1.0': 440, '1.5': 612, '2.0': 784, '2.5': 936, '3.0': 1089, '3.5': 1206, '4.0': 1322, '4.5': 1432, '5.0': 1543, '5.5': 1661, '6.0': 1779 },'33': { '1.0': 469, '1.5': 654, '2.0': 838, '2.5': 1001, '3.0': 1164, '3.5': 1280, '4.0': 1414, '4.5': 1534, '5.0': 1654, '5.5': 1783, '6.0': 1912 },'34': { '1.0': 487, '1.5': 695, '2.0': 892, '2.5': 1066, '3.0': 1239, '3.5': 1373, '4.0': 1507, '4.5': 1636, '5.0': 1766, '5.5': 1906, '6.0': 2046 },'35': { '1.0': 530, '1.5': 742, '2.0': 954, '2.5': 1141, '3.0': 1328, '3.5': 1473, '4.0': 1618, '4.5': 1757, '5.0': 1896, '5.5': 2044, '6.0': 2192 },'36': { '1.0': 563, '1.5': 789, '2.0': 1015, '2.5': 1216, '3.0': 1416, '3.5': 1572, '4.0': 1728, '4.5': 1877, '5.0': 2026, '5.5': 2182, '6.0': 2338 },'37': { '1.0': 596, '1.5': 836, '2.0': 1075, '2.5': 1290, '3.0': 1506, '3.5': 1670, '4.0': 1835, '4.5': 1998, '5.0': 2160, '5.5': 2324, '6.0': 2488 },'38': { '1.0': 629, '1.5': 882, '2.0': 1135, '2.5': 1366, '3.0': 1596, '3.5': 1769, '4.0': 1942, '4.5': 2118, '5.0': 2295, '5.5': 2466, '6.0': 2637 },'39': { '1.0': 666, '1.5': 935, '2.0': 1204, '2.5': 1449, '3.0': 1694, '3.5': 1881, '4.0': 2068, '4.5': 2251, '5.0': 2434, '5.5': 2616, '6.0': 2799 },'40': { '1.0': 703, '1.5': 988, '2.0': 1274, '2.5': 1532, '3.0': 1791, '3.5': 1993, '4.0': 2195, '4.5': 2384, '5.0': 2574, '5.5': 2768, '6.0': 2961 }
-    };
-    const INTERNATIONAL_FC78_VOLUMES = { /* ... unchanged ... */
-        '10': { '1.0': 36, '1.5': 48, '2.0': 59, '2.5': 66, '3.0': 73 },'11': { '1.0': 46, '1.5': 61, '2.0': 76, '2.5': 86, '3.0': 96 },'12': { '1.0': 56, '1.5': 74, '2.0': 92, '2.5': 106, '3.0': 120, '3.5': 128, '4.0': 137 },'13': { '1.0': 67, '1.5': 90, '2.0': 112, '2.5': 130, '3.0': 147, '3.5': 158, '4.0': 168 },'14': { '1.0': 78, '1.5': 105, '2.0': 132, '2.5': 153, '3.0': 174, '3.5': 187, '4.0': 200 },'15': { '1.0': 92, '1.5': 124, '2.0': 156, '2.5': 182, '3.0': 208, '3.5': 225, '4.0': 242 },'16': { '1.0': 106, '1.5': 143, '2.0': 180, '2.5': 210, '3.0': 241, '3.5': 263, '4.0': 285 },'17': { '1.0': 121, '1.5': 164, '2.0': 206, '2.5': 242, '3.0': 278, '3.5': 304, '4.0': 330 },'18': { '1.0': 136, '1.5': 184, '2.0': 233, '2.5': 274, '3.0': 314, '3.5': 344, '4.0': 374 },'19': { '1.0': 154, '1.5': 209, '2.0': 264, '2.5': 311, '3.0': 358, '3.5': 392, '4.0': 427 },'20': { '1.0': 171, '1.5': 234, '2.0': 296, '2.5': 348, '3.0': 401, '3.5': 440, '4.0': 480, '4.5': 511, '5.0': 542 },'21': { '1.0': 191, '1.5': 262, '2.0': 332, '2.5': 391, '3.0': 450, '3.5': 496, '4.0': 542, '4.5': 579, '5.0': 616 },'22': { '1.0': 211, '1.5': 289, '2.0': 357, '2.5': 434, '3.0': 499, '3.5': 552, '4.0': 593, '4.5': 646, '5.0': 681 },'23': { '1.0': 231, '1.5': 317, '2.0': 404, '2.5': 467, '3.0': 552, '3.5': 608, '4.0': 663, '4.5': 714, '5.0': 766 },'24': { '1.0': 251, '1.5': 345, '2.0': 441, '2.5': 523, '3.0': 605, '3.5': 664, '4.0': 723, '4.5': 782, '5.0': 840 },'25': { '1.0': 275, '1.5': 380, '2.0': 484, '2.5': 574, '3.0': 665, '3.5': 732, '4.0': 800, '4.5': 865, '5.0': 930 },'26': { '1.0': 299, '1.5': 414, '2.0': 528, '2.5': 626, '3.0': 725, '3.5': 801, '4.0': 877, '4.5': 949, '5.0': 1021 },'27': { '1.0': 323, '1.5': 448, '2.0': 572, '2.5': 680, '3.0': 788, '3.5': 870, '4.0': 952, '4.5': 1032, '5.0': 1111 },'28': { '1.0': 347, '1.5': 482, '2.0': 616, '2.5': 733, '3.0': 850, '3.5': 938, '4.0': 1027, '4.5': 1114, '5.0': 1201, '5.5': 1280, '6.0': 1358 },'29': { '1.0': 375, '1.5': 521, '2.0': 667, '2.5': 794, '3.0': 920, '3.5': 1016, '4.0': 1112, '4.5': 1210, '5.0': 1308, '5.5': 1398, '6.0': 1488 },'30': { '1.0': 403, '1.5': 560, '2.0': 718, '2.5': 854, '3.0': 991, '3.5': 1094, '4.0': 1198, '4.5': 1306, '5.0': 1415, '5.5': 1517, '6.0': 1619 },'31': { '1.0': 432, '1.5': 602, '2.0': 772, '2.5': 921, '3.0': 1070, '3.5': 1184, '4.0': 1299, '4.5': 1412, '5.0': 1526, '5.5': 1640, '6.0': 1754 },'32': { '1.0': 462, '1.5': 644, '2.0': 826, '2.5': 988, '3.0': 1149, '3.5': 1274, '4.0': 1400, '4.5': 1518, '5.0': 1637, '5.5': 1762, '6.0': 1888 },'33': { '1.0': 492, '1.5': 686, '2.0': 880, '2.5': 1053, '3.0': 1226, '3.5': 1360, '4.0': 1495, '4.5': 1622, '5.0': 1750, '5.5': 1888, '6.0': 2026 },'34': { '1.0': 521, '1.5': 728, '2.0': 934, '2.5': 1119, '3.0': 1304, '3.5': 1447, '4.0': 1590, '4.5': 1727, '5.0': 1864, '5.5': 2014, '6.0': 2163 },'35': { '1.0': 555, '1.5': 776, '2.0': 998, '2.5': 1196, '3.0': 1394, '3.5': 1548, '4.0': 1702, '4.5': 1851, '5.0': 2000, '5.5': 2156, '6.0': 2312 },'36': { '1.0': 589, '1.5': 826, '2.0': 1063, '2.5': 1274, '3.0': 1485, '3.5': 1650, '4.0': 1814, '4.5': 1974, '5.0': 2135, '5.5': 2298, '6.0': 2461 },'37': { '1.0': 622, '1.5': 873, '2.0': 1124, '2.5': 1351, '3.0': 1578, '3.5': 1752, '4.0': 1926, '4.5': 2099, '5.0': 2272, '5.5': 2444, '6.0': 2616 },'38': { '1.0': 656, '1.5': 921, '2.0': 1186, '2.5': 1428, '3.0': 1670, '3.5': 1854, '4.0': 2038, '4.5': 2224, '5.0': 2410, '5.5': 2590, '6.0': 2771 },'39': { '1.0': 694, '1.5': 976, '2.0': 1258, '2.5': 1514, '3.0': 1769, '3.5': 1968, '4.0': 2166, '4.5': 2359, '5.0': 2552, '5.5': 2744, '6.0': 2937 },'40': { '1.0': 731, '1.5': 1030, '2.0': 1329, '2.5': 1598, '3.0': 1868, '3.5': 2081, '4.0': 2294, '4.5': 2494, '5.0': 2693, '5.5': 2898, '6.0': 3103 }
-    };
+    // Feedback timeout handles
+    let feedbackTimeout = null, settingsFeedbackTimeout = null;
+    let speciesFeedbackTimeout = null, projectFeedbackTimeout = null, backupFeedbackTimeout = null;
+    let updateStatusTimeout = null;
 
+    // Active tally chart instances
+    let tallyChartInstances = [];
 
-    // --- Function Definitions ---
-
-    // --- General Utility Functions ---
-    function showFeedbackMessage(element, message, isError = false, duration = 2500, timeoutVar) {
-        if (!element) return timeoutVar;
-        if (timeoutVar) clearTimeout(timeoutVar);
+    // ============================================================
+    // UTILITY FUNCTIONS
+    // ============================================================
+    function showFeedbackMessage(element, message, isError, duration, timeoutHandle) {
+        if (!element) return timeoutHandle;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
         element.textContent = message;
         element.className = isError ? 'feedback-message error' : 'feedback-message';
         element.style.display = 'block';
@@ -202,581 +213,1848 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => { element.style.display = 'none'; }, 500);
         }, duration);
     }
-    function showFeedback(message, isError = false, duration = 2500) { feedbackTimeout = showFeedbackMessage(feedbackMsg, message, isError, duration, feedbackTimeout); }
-    function showSettingsFeedback(message, isError = false, duration = 2000) { settingsFeedbackTimeout = showFeedbackMessage(settingsFeedback, message, isError, duration, settingsFeedbackTimeout); }
-    function showSpeciesFeedback(message, isError = false, duration = 2500) { speciesFeedbackTimeout = showFeedbackMessage(speciesMgmtFeedback, message, isError, duration, speciesFeedbackTimeout); }
-    function showProjectFeedback(message, isError = false, duration = 3000) { projectFeedbackTimeout = showFeedbackMessage(projectMgmtFeedback, message, isError, duration, projectFeedbackTimeout); }
+    function showFeedback(msg, isError = false, dur = 2500) {
+        feedbackTimeout = showFeedbackMessage(feedbackMsg, msg, isError, dur, feedbackTimeout);
+    }
+    function showSettingsFeedback(msg, isError = false) {
+        settingsFeedbackTimeout = showFeedbackMessage(settingsFeedback, msg, isError, 2000, settingsFeedbackTimeout);
+    }
+    function showSpeciesFeedback(msg, isError = false) {
+        speciesFeedbackTimeout = showFeedbackMessage(speciesMgmtFeedback, msg, isError, 2500, speciesFeedbackTimeout);
+    }
+    function showProjectFeedback(msg, isError = false, dur = 3000) {
+        projectFeedbackTimeout = showFeedbackMessage(projectMgmtFeedback, msg, isError, dur, projectFeedbackTimeout);
+    }
 
-    // --- Session Data Management ---
+    // ============================================================
+    // AUTOSAVE / SESSION
+    // ============================================================
+    /** Saves the open project (called after every change). Returns false if the save failed. */
     function saveSessionData() {
-        try {
-            const sessionState = { data: collectedData, plot: currentPlotNumber, areaIdx: currentAreaIndex };
-            if (collectedData.length > 0) { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionState)); }
-            else { localStorage.removeItem(STORAGE_KEY); }
-        } catch (e) { console.error('[Session] Error saving data:', e); }
+        if (!currentProject) return false;
+        currentProject.data = collectedData;
+        currentProject.plot = currentPlotNumber;
+        currentProject.areaIdx = currentAreaIndex;
+        if (standNotesTextarea && notesDirty) { currentProject.notes = standNotesTextarea.value; notesDirty = false; }
+        const ok = Store.saveProject(currentProject);
+        renderProjectMeta();
+        return ok;
     }
-    function loadAndPromptSessionData() {
-        try {
-            const savedSessionJSON = localStorage.getItem(STORAGE_KEY);
-            if (savedSessionJSON) {
-                const recoveredSession = JSON.parse(savedSessionJSON);
-                const recoveredData = recoveredSession?.data;
-                if (Array.isArray(recoveredData) && recoveredData.length > 0) {
-                    const lastPlot = recoveredSession?.plot ?? 1;
-                    const lastAreaIndex = recoveredSession?.areaIdx ?? 0;
-                    const numEntries = recoveredData.length;
-                    const entryWord = numEntries === 1 ? 'entry' : 'entries';
-                    const lastAreaLetter = areaLetters[lastAreaIndex];
-                    if (confirm(`Recover ${numEntries} unsaved ${entryWord} from the last session? (Last Plot: ${lastPlot}, Last Area: ${lastAreaLetter})`)) {
-                        collectedData = recoveredData;
-                        currentPlotNumber = lastPlot;
-                        currentAreaIndex = lastAreaIndex;
-                        console.log('[Session] Data recovered.');
-                    } else {
-                        localStorage.removeItem(STORAGE_KEY); console.log('[Session] Recovery declined.');
-                        currentPlotNumber = 1; currentAreaIndex = 0;
-                    }
-                } else {
-                    localStorage.removeItem(STORAGE_KEY); currentPlotNumber = 1; currentAreaIndex = 0;
-                    console.log('[Session] Invalid/empty session data found.');
-                }
-            } else {
-                currentPlotNumber = 1; currentAreaIndex = 0; console.log('[Session] No session data found.');
+
+    /** Header status: the time of the last good save, or a visible error. */
+    function renderSaveState(st) {
+        const bar = document.getElementById('saveErrorBar');
+        if (st.error) {
+            if (bar) { bar.hidden = false; bar.textContent = `⚠ Not saved — ${st.error} Tap for help.`; }
+            if (autosaveStatus) { autosaveStatus.textContent = '⚠ Not saved'; autosaveStatus.classList.add('save-error'); autosaveStatus.title = st.error; }
+        } else {
+            if (bar) bar.hidden = true;
+            if (autosaveStatus) {
+                autosaveStatus.classList.remove('save-error');
+                autosaveStatus.textContent = st.lastSavedAt ? `✓ Saved ${new Date(st.lastSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+                autosaveStatus.title = 'Every change is saved to the open project automatically';
             }
-        } catch (e) {
-            console.error('[Session] Error loading session data:', e);
-            localStorage.removeItem(STORAGE_KEY); currentPlotNumber = 1; currentAreaIndex = 0;
         }
-        updatePlotDisplay(); updateAreaDisplay(); renderEntries();
+        updateStickyHeight?.();
     }
+    function updateStickyHeight() {
+        const block = document.querySelector('.sticky-top-block');
+        if (block) document.documentElement.style.setProperty('--sticky-block-height', block.offsetHeight + 'px');
+    }
+
+    /** Shows a project: its trees, plot position, notes and recommendations. */
+    function openProject(p, { quiet = false } = {}) {
+        flushNotes();
+        currentProject = p;
+        Store.setCurrentId(p.id);
+        collectedData = Array.isArray(p.data) ? p.data : [];
+        collectedData.forEach((e, i) => { if (!e.id) e.id = Date.now() + i; });
+        currentPlotNumber = p.plot || 1;
+        currentAreaIndex = p.areaIdx || 0;
+        if (standNotesTextarea) standNotesTextarea.value = p.notes || '';
+        notesDirty = false;
+        if (projectNameInput) projectNameInput.value = p.name;
+        currentLocation = null;
+        if (locationStatus) locationStatus.textContent = '';
+        renderEntries();
+        updatePlotDisplay(); updateAreaDisplay(); calculateAndDisplayNeededPlots();
+        renderProjectsPanel();
+        window.TTRecs?.render();
+        if (!quiet) showProjectFeedback(`Opened "${p.name}".`);
+    }
+
+    // ============================================================
+    // PROJECTS TAB: switch / new / copy / delete, backup & restore, safety copies
+    // ============================================================
+    const fmtDate = t => (t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never');
+    const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+
+    function renderProjectMeta() {
+        const el = document.getElementById('projectMeta');
+        if (!el || !currentProject) return;
+        const trees = collectedData.filter(e => !e.emptyPlot).length;
+        const plots = new Set(collectedData.map(e => `${e.areaLetter}-${e.plotNumber}`)).size;
+        el.textContent = `${plural(trees, 'tree')} · ${plural(plots, 'plot')} · saved automatically · last backup: ${fmtDate(currentProject.lastBackupAt)}`;
+    }
+
+    function renderProjectsPanel() {
+        if (loadProjectSelect) {
+            const list = Store.listProjects().filter(m => m.id !== currentProject?.id);
+            loadProjectSelect.innerHTML = list.length
+                ? list.map(m => `<option value="${m.id}">${escHtml(m.name)} — ${plural(m.treeCount || 0, 'tree')}</option>`).join('')
+                : '<option value="">No other projects</option>';
+            loadProjectSelect.disabled = !list.length;
+            if (loadProjectBtn) loadProjectBtn.disabled = !list.length;
+        }
+        renderProjectMeta();
+        renderSnapshots();
+        renderBackupStatus();
+    }
+
+    function renderSnapshots() {
+        const box = document.getElementById('snapshotList');
+        if (!box) return;
+        const list = Store.listSnapshots();
+        box.innerHTML = list.length ? list.map(s => `
+            <div class="snapshot-row">
+                <div class="snapshot-info"><b>${escHtml(s.name)}</b><span>${escHtml(s.reason)} · ${fmtDate(s.createdAt)} · ${plural(s.treeCount || 0, 'tree')}</span></div>
+                <button type="button" class="control-button btn-info" data-restore-snap="${s.id}">Restore</button>
+            </div>`).join('') : '<p class="placeholder-msg" style="padding:6px;">No safety copies in the last 7 days.</p>';
+    }
+
+    async function renderBackupStatus() {
+        const el = document.getElementById('backupStatus');
+        if (!el) return;
+        const list = Store.listProjects();
+        const last = list.length ? Math.min(...list.map(m => m.lastBackupAt || 0)) : 0;
+        const info = await Store.storageInfo();
+        const keep = info.persisted === true ? 'protected from clean-up' : info.persisted === false ? 'not protected — install the app to keep it safe' : '';
+        el.textContent = `${plural(list.length, 'project')} on this device · oldest backup: ${fmtDate(last || 0)} · ${info.usedKb} KB used${keep ? ' · ' + keep : ''}`;
+        renderBackupReminder();
+    }
+
+    /** Takes a safety copy of the open project before a destructive action. False = the user cancelled. */
+    function safetyCopy(reason) {
+        saveSessionData();
+        if (Store.snapshot(currentProject, reason)) { renderSnapshots(); return true; }
+        return confirm('A safety copy could not be kept (device storage is full). Continue anyway?');
+    }
+
+    function handleNewProject() {
+        const name = prompt('Name for the new project:', `Cruise ${new Date().toLocaleDateString()}`);
+        if (name === null) return;
+        saveSessionData();
+        const p = Store.blankProject(name.trim() || 'Untitled Cruise');
+        if (!Store.saveProject(p)) { showProjectFeedback('Could not create the project — device storage is full.', true, 5000); return; }
+        openProject(p, { quiet: true });
+        showProjectFeedback(`Created "${p.name}". Your other projects are still saved.`);
+    }
+
+    function handleOpenProject() {
+        const id = loadProjectSelect?.value;
+        if (!id) return;
+        saveSessionData();
+        const p = Store.getProject(id);
+        if (!p) { showProjectFeedback('That project could not be read.', true); renderProjectsPanel(); return; }
+        openProject(p);
+    }
+
+    function handleCopyProject() {
+        saveSessionData();
+        const copy = Store.addProjectCopy(currentProject, `${currentProject.name} (copy)`);
+        if (!copy) { showProjectFeedback('Could not copy — device storage is full.', true, 5000); return; }
+        renderProjectsPanel();
+        showProjectFeedback(`Saved a copy: "${copy.name}". You are still in "${currentProject.name}".`);
+    }
+
+    function handleDeleteProject() {
+        if (!currentProject) return;
+        const n = collectedData.filter(e => !e.emptyPlot).length;
+        if (!confirm(`Delete project "${currentProject.name}" (${plural(n, 'tree')})?\n\nA safety copy is kept for 7 days on this tab.`)) return;
+        if (!safetyCopy('Project deleted')) return;
+        const gone = currentProject.name;
+        Store.deleteProject(currentProject.id);
+        const next = Store.listProjects()[0];
+        let p = next ? Store.getProject(next.id) : null;
+        if (!p) { p = Store.blankProject('Untitled Cruise'); Store.saveProject(p); }
+        currentProject = null;
+        openProject(p, { quiet: true });
+        showProjectFeedback(`Deleted "${gone}". Opened "${p.name}".`);
+    }
+
+    function handleRestoreSnapshot(id) {
+        const snap = Store.getSnapshot(id);
+        const meta = Store.listSnapshots().find(s => s.id === id);
+        if (!snap || !meta) { showProjectFeedback('That safety copy is no longer available.', true); renderSnapshots(); return; }
+        saveSessionData();
+        const copy = Store.addProjectCopy(snap, `${meta.name} (restored ${new Date(meta.createdAt).toLocaleDateString()})`);
+        if (!copy) { showProjectFeedback('Could not restore — device storage is full.', true, 5000); return; }
+        openProject(copy, { quiet: true });
+        showProjectFeedback(`Restored "${copy.name}" as a new project.`, false, 4000);
+    }
+
+    async function handleSaveBackup() {
+        saveSessionData();
+        const fb = m => { backupFeedbackTimeout = showFeedbackMessage(document.getElementById('backupFeedback'), m.text, m.err, 5000, backupFeedbackTimeout); };
+        try {
+            const backup = Store.buildBackup();
+            const d = new Date(), pad = n => String(n).padStart(2, '0');
+            const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+            const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+            const r = await Store.saveFile(blob, `TimberTally_Backup_${stamp}.json`);
+            if (r === 'cancelled') return fb({ text: 'Backup cancelled.', err: false });
+            const t = Date.now();
+            Store.markAllBackedUp(t);
+            if (currentProject) currentProject.lastBackupAt = t;
+            renderProjectsPanel();
+            fb({ text: r === 'downloaded'
+                ? `✓ Backup downloaded (${plural(backup.projects.length, 'project')}). Move it into OneDrive or Google Drive, or email it to yourself.`
+                : `✓ Backup saved (${plural(backup.projects.length, 'project')}).`, err: false });
+        } catch (e) {
+            fb({ text: `Backup failed: ${e.message}`, err: true });
+        }
+    }
+
+    function handleRestoreBackupFile(file) {
+        const fb = (text, err) => { backupFeedbackTimeout = showFeedbackMessage(document.getElementById('backupFeedback'), text, err, 7000, backupFeedbackTimeout); };
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                saveSessionData();
+                const r = Store.restoreBackup(Store.parseBackup(String(reader.result)));
+                initializeSpeciesManagement();
+                renderProjectsPanel();
+                const parts = [];
+                if (r.added.length) parts.push(`added ${plural(r.added.length, 'project')}: ${r.added.join(', ')}`);
+                if (r.skipped.length) parts.push(`${plural(r.skipped.length, 'project')} already here, skipped`);
+                if (r.failed.length) parts.push(`${r.failed.length} could not be saved (storage full)`);
+                if (!r.added.length && !r.failed.length) fb(r.skipped.length ? `Nothing new — all ${plural(r.skipped.length, 'project')} in that backup are already on this device.` : 'The backup had no projects.', false);
+                else fb(`✓ Restore ${parts.join('; ')}.${r.added.length ? ' Open them from "Switch to Another Project".' : ''}`, r.failed.length > 0);
+            } catch (e) { fb(e.message, true); }
+        };
+        reader.onerror = () => fb('Could not read that file.', true);
+        reader.readAsText(file);
+    }
+
+    /** Banner once any project has gone more than 7 days with changes that aren't in a backup. */
+    function renderBackupReminder() {
+        const el = document.getElementById('backupReminder');
+        if (!el) return;
+        const now = Date.now();
+        const stale = Store.listProjects().filter(m => (m.treeCount || 0) > 0 && m.updatedAt > (m.lastBackupAt || 0));
+        const oldest = Math.min(...stale.map(m => m.lastBackupAt || m.createdAt));
+        const snoozed = Number(Store.readJSON(Store.K.backupSnooze, 0)) > now;
+        const days = stale.length ? Math.floor((now - oldest) / 86400000) : 0;
+        const show = stale.length > 0 && days >= 7 && !snoozed;
+        el.hidden = !show;
+        if (show) document.getElementById('backupReminderText').textContent = `No backup in ${days} days. Save one so your cruise data is safe off this device.`;
+        updateStickyHeight();
+    }
+
+    // ============================================================
+    // SETTINGS    // ============================================================
+    // SETTINGS
+    // ============================================================
     function updateFormClassVisibility() {
         if (!logRuleSelect || !formClassGroup) return;
-        const selectedRule = logRuleSelect.value;
-        formClassGroup.hidden = (selectedRule !== 'Doyle');
+        formClassGroup.hidden = (logRuleSelect.value !== 'Doyle');
     }
-    // --- Settings Functions ---
+
     function saveSettings() {
-        try {
-            const settings = { baf: currentBaf, logRule: currentLogRule, formClass: currentFormClass, generateGraphs: currentGenerateGraphs };
-            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-            console.log("[Settings] Saved:", settings);
-        } catch (e) { console.error('[Settings] Error saving:', e); showSettingsFeedback("Error saving settings!", true); }
+        Store.writeJSON(SETTINGS_STORAGE_KEY, {
+            baf: currentBaf, logRule: currentLogRule,
+            formClass: currentFormClass, generateGraphs: currentGenerateGraphs,
+            zipExport: currentZipExport, darkMode: currentDarkMode
+        });
     }
+
     function loadSettings() {
         try {
-            const storedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
-            if (storedSettingsJSON) {
-                const storedSettings = JSON.parse(storedSettingsJSON);
-                if (storedSettings && typeof storedSettings === 'object') {
-                    currentBaf = parseInt(storedSettings.baf, 10) || 10;
-                    currentLogRule = ['Doyle', 'Scribner', 'International'].includes(storedSettings.logRule) ? storedSettings.logRule : 'Doyle';
-                    currentFormClass = parseInt(storedSettings.formClass, 10) || 78;
-                    if (!VALID_DOYLE_FORM_CLASSES.includes(currentFormClass)) currentFormClass = 78;
-                    currentGenerateGraphs = storedSettings.generateGraphs === 'Yes' ? 'Yes' : 'No';
-                    console.log("[Settings] Loaded:", { baf: currentBaf, logRule: currentLogRule, formClass: currentFormClass, generateGraphs: currentGenerateGraphs });
+            const json = localStorage.getItem(SETTINGS_STORAGE_KEY);
+            if (json) {
+                const s = JSON.parse(json);
+                if (s && typeof s === 'object') {
+                    currentBaf = parseInt(s.baf, 10) || 10;
+                    currentLogRule = ['Doyle','Scribner','International'].includes(s.logRule) ? s.logRule : 'Doyle';
+                    currentFormClass = parseInt(s.formClass, 10) || 78;
+                    if (!VALID_DOYLE_FC.includes(currentFormClass)) currentFormClass = 78;
+                    currentGenerateGraphs = s.generateGraphs === 'Yes' ? 'Yes' : 'No';
+                    currentZipExport = s.zipExport === 'Yes' ? 'Yes' : 'No';
+                    currentDarkMode = ['off','on','system'].includes(s.darkMode) ? s.darkMode : 'off';
                     if (bafSelect) bafSelect.value = String(currentBaf);
                     if (logRuleSelect) logRuleSelect.value = currentLogRule;
                     if (formClassSelect) formClassSelect.value = String(currentFormClass);
                     if (generateGraphsSelect) generateGraphsSelect.value = currentGenerateGraphs;
-                } else { applyDefaultSettings(); }
-            } else { applyDefaultSettings(); }
-        } catch (e) { console.error('[Settings] Error loading:', e); applyDefaultSettings(); }
-        if(settingsSection) settingsSection.hidden = true;
-        if(toggleSettingsBtn) toggleSettingsBtn.setAttribute('aria-expanded', 'false');
+                    if (zipExportSelect) zipExportSelect.value = currentZipExport;
+                    if (darkModeSelect) darkModeSelect.value = currentDarkMode;
+                } else applyDefaultSettings();
+            } else applyDefaultSettings();
+        } catch (e) { applyDefaultSettings(); }
+        applyDarkMode();
+        if (settingsSection) settingsSection.hidden = true;
+        if (toggleSettingsBtn) toggleSettingsBtn.setAttribute('aria-expanded', 'false');
+        updateSaveBtnLabel();
     }
+
     function applyDefaultSettings() {
-        console.log("[Settings] Applying default settings.");
-        currentBaf = 10; currentLogRule = 'Doyle'; currentFormClass = 78; currentGenerateGraphs = 'No';
+        currentBaf = 10; currentLogRule = 'Doyle'; currentFormClass = 78;
+        currentGenerateGraphs = 'No'; currentZipExport = 'No'; currentDarkMode = 'off';
         if (bafSelect) bafSelect.value = '10';
         if (logRuleSelect) logRuleSelect.value = 'Doyle';
         if (formClassSelect) formClassSelect.value = '78';
         if (generateGraphsSelect) generateGraphsSelect.value = 'No';
+        if (zipExportSelect) zipExportSelect.value = 'No';
+        if (darkModeSelect) darkModeSelect.value = 'off';
         saveSettings();
     }
 
-    // --- Species Management Functions ---
-    function saveSpeciesList() { try { localStorage.setItem(SPECIES_STORAGE_KEY, JSON.stringify(currentSpeciesList)); console.log("[Species] List saved."); } catch (e) { console.error('[Species] Error saving list:', e); showSpeciesFeedback("Error saving species list!", true); } }
-    function populateSpeciesDropdowns() { if (!speciesSelect || !removeSpeciesSelect) return; const currentVal = speciesSelect.value; speciesSelect.innerHTML = ''; removeSpeciesSelect.innerHTML = ''; currentSpeciesList.sort((a, b) => a.localeCompare(b)).forEach(species => { const optM = document.createElement('option'); optM.value = optM.textContent = species; speciesSelect.appendChild(optM); const optR = document.createElement('option'); optR.value = optR.textContent = species; removeSpeciesSelect.appendChild(optR); }); if (currentSpeciesList.includes(currentVal)) { speciesSelect.value = currentVal; } else if (speciesSelect.options.length > 0) { speciesSelect.selectedIndex = 0; } }
-    function initializeSpeciesManagement() { try { const storedJSON = localStorage.getItem(SPECIES_STORAGE_KEY); if (storedJSON) { const stored = JSON.parse(storedJSON); if (Array.isArray(stored) && stored.every(s => typeof s === 'string')) { currentSpeciesList = stored; console.log("[Species] Loaded list."); } else { console.warn("[Species] Invalid stored list, using defaults."); currentSpeciesList = [...DEFAULT_SPECIES]; saveSpeciesList(); } } else { console.log("[Species] No list found, using defaults."); currentSpeciesList = [...DEFAULT_SPECIES]; saveSpeciesList(); } } catch (e) { console.error('[Species] Error loading list:', e); currentSpeciesList = [...DEFAULT_SPECIES]; } populateSpeciesDropdowns(); if (speciesManagementSection) speciesManagementSection.hidden = true; if(toggleSpeciesMgmtBtn) toggleSpeciesMgmtBtn.setAttribute('aria-expanded', 'false'); }
+    function applyDarkMode() {
+        const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+        const useDark = currentDarkMode === 'on' || (currentDarkMode === 'system' && prefersDark);
+        document.body.classList.toggle('dark-mode', useDark);
+    }
 
-    // --- Project Management Functions ---
-    function saveProjectsToStorage() { try { localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(savedProjects)); console.log("[Project] Projects saved."); } catch (e) { console.error('[Project] Error saving projects:', e); showProjectFeedback("Error saving projects!", true); } }
-    function populateLoadProjectDropdown() { if (!loadProjectSelect) return; const currentVal = loadProjectSelect.value; loadProjectSelect.innerHTML = '<option value="">-- Select a project --</option>'; const names = Object.keys(savedProjects).sort((a, b) => a.localeCompare(b)); names.forEach(name => { const opt = document.createElement('option'); opt.value = opt.textContent = name; loadProjectSelect.appendChild(opt); }); const hasProj = names.length > 0; if(loadProjectBtn) loadProjectBtn.disabled = !hasProj; if(deleteProjectBtn) deleteProjectBtn.disabled = !hasProj; loadProjectSelect.disabled = !hasProj; if (names.includes(currentVal)) loadProjectSelect.value = currentVal; }
-    function initializeProjectManagement() { try { const storedJSON = localStorage.getItem(PROJECTS_STORAGE_KEY); if (storedJSON) { const parsed = JSON.parse(storedJSON); if (typeof parsed === 'object' && parsed !== null) { savedProjects = parsed; console.log("[Project] Loaded projects."); } else { console.warn("[Project] Invalid stored projects, initializing."); savedProjects = {}; saveProjectsToStorage(); } } else { console.log("[Project] No saved projects found."); savedProjects = {}; } } catch (e) { console.error('[Project] Error loading projects:', e); savedProjects = {}; } populateLoadProjectDropdown(); if(projectManagementSection) projectManagementSection.hidden = true; if(toggleProjectMgmtBtn) toggleProjectMgmtBtn.setAttribute('aria-expanded', 'false'); }
-
-    // --- UI Population & Updates ---
-    function updatePlotNumberAndAreaFromData() {
-        let lastValidPlot = null; let lastValidAreaIndex = null;
-        if (collectedData.length > 0) {
-            for (let i = collectedData.length - 1; i >= 0; i--) {
-                if (collectedData[i]?.plotNumber && lastValidPlot === null) { const plot = parseInt(collectedData[i].plotNumber, 10); if (!isNaN(plot) && plot >= MIN_PLOT_NUMBER && plot <= MAX_PLOT_NUMBER) { lastValidPlot = plot; } }
-                if (collectedData[i]?.areaLetter && lastValidAreaIndex === null) { const areaIdx = areaLetters.indexOf(collectedData[i].areaLetter); if (areaIdx !== -1) { lastValidAreaIndex = areaIdx; } }
-                if (lastValidPlot !== null && lastValidAreaIndex !== null) break;
+    function updateSaveBtnLabel() {
+        if (saveCsvBtn) {
+            if (currentZipExport === 'Yes') {
+                saveCsvBtn.textContent = '\uD83D\uDCBE Save ZIP';
+            } else if (currentGenerateGraphs === 'Yes') {
+                saveCsvBtn.textContent = '\uD83D\uDCBE Save CSV & Graphs';
+            } else {
+                saveCsvBtn.textContent = '\uD83D\uDCBE Save CSV';
             }
         }
-        currentPlotNumber = lastValidPlot !== null ? lastValidPlot : 1; currentAreaIndex = lastValidAreaIndex !== null ? lastValidAreaIndex : 0;
+    }
+
+    // ============================================================
+    // SPECIES MANAGEMENT
+    // ============================================================
+    function saveSpeciesList() {
+        Store.writeJSON(SPECIES_STORAGE_KEY, currentSpeciesList);
+    }
+
+    function populateSpeciesDropdowns() {
+        if (!speciesSelect || !removeSpeciesSelect) return;
+        const currentVal = speciesSelect.value;
+        speciesSelect.innerHTML = '';
+        removeSpeciesSelect.innerHTML = '';
+        currentSpeciesList.sort((a, b) => a.localeCompare(b)).forEach(sp => {
+            const o1 = document.createElement('option'); o1.value = o1.textContent = sp;
+            const o2 = document.createElement('option'); o2.value = o2.textContent = sp;
+            speciesSelect.appendChild(o1);
+            removeSpeciesSelect.appendChild(o2);
+        });
+        const ph = document.createElement('option');
+        ph.value = ''; ph.textContent = 'Pick a species…'; ph.disabled = true;
+        speciesSelect.insertBefore(ph, speciesSelect.firstChild);
+        speciesSelect.value = currentSpeciesList.includes(currentVal) ? currentVal : '';
+        renderSpeciesQuickPick(true);
+    }
+
+    function initializeSpeciesManagement() {
+        try {
+            const json = localStorage.getItem(SPECIES_STORAGE_KEY);
+            if (json) {
+                const stored = JSON.parse(json);
+                currentSpeciesList = Array.isArray(stored) && stored.every(s => typeof s === 'string')
+                    ? stored : [...DEFAULT_SPECIES];
+            } else {
+                currentSpeciesList = [...DEFAULT_SPECIES];
+                saveSpeciesList();
+            }
+        } catch (e) { currentSpeciesList = [...DEFAULT_SPECIES]; }
+        populateSpeciesDropdowns();
+    }
+
+    // ============================================================
+    // UI POPULATION & DISPLAY
+    // ============================================================
+    function updatePlotNumberAndAreaFromData() {
+        let lastPlot = null, lastAreaIdx = null;
+        for (let i = collectedData.length - 1; i >= 0; i--) {
+            const e = collectedData[i];
+            if (e?.plotNumber && lastPlot === null) {
+                const n = parseInt(e.plotNumber, 10);
+                if (!isNaN(n) && n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) lastPlot = n;
+            }
+            if (e?.areaLetter && lastAreaIdx === null) {
+                const idx = areaLetters.indexOf(e.areaLetter);
+                if (idx !== -1) lastAreaIdx = idx;
+            }
+            if (lastPlot !== null && lastAreaIdx !== null) break;
+        }
+        currentPlotNumber = lastPlot ?? 1;
+        currentAreaIndex  = lastAreaIdx ?? 0;
         updatePlotDisplay(); updateAreaDisplay();
     }
-    function populateDbhOptions() { if (!dbhSelect) return; dbhSelect.innerHTML = ''; for (let i = 4; i <= 40; i += 2) { const opt = document.createElement('option'); opt.value = opt.textContent = String(i); dbhSelect.appendChild(opt); } if (dbhSelect.options.length > 0) dbhSelect.selectedIndex = 0; }
-    function populateLogsOptions() { if (!logsSelect) return; logsSelect.innerHTML = ''; const vals = ["0", "0.5", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "5.5", "6", "Cull"]; vals.forEach(v => { const opt = document.createElement('option'); opt.value = opt.textContent = v; logsSelect.appendChild(opt); }); if (logsSelect.options.length > 0) logsSelect.selectedIndex = 0; }
-    function checkAndSetLogsForDbh() { if (currentLogRule === 'Doyle' && dbhSelect && logsSelect) { const selectedDbh = dbhSelect.value; const dbhResetVals = ['4', '6', '8', '10']; if (dbhResetVals.includes(selectedDbh) && logsSelect.value !== '0' && logsSelect.value !== 'Cull') { const currentLogsNum = parseFloat(logsSelect.value); if (!isNaN(currentLogsNum) && currentLogsNum > 0) { logsSelect.value = '0'; console.log(`Doyle Rule: DBH ${selectedDbh} -> Logs forced to 0.`); showFeedback(`Logs set to 0 for DBH ${selectedDbh} (Doyle)`, false, 1500); } } } }
-    function updatePlotDisplay() { if(plotNumberDisplay) plotNumberDisplay.textContent = currentPlotNumber; if(plotDecrementBtn) plotDecrementBtn.disabled = (currentPlotNumber <= MIN_PLOT_NUMBER); if(plotIncrementBtn) plotIncrementBtn.disabled = (currentPlotNumber >= MAX_PLOT_NUMBER); }
-    function updateAreaDisplay() { const currentLetter = areaLetters[currentAreaIndex]; if(areaLetterDisplay) areaLetterDisplay.textContent = currentLetter; if(areaDecrementBtn) areaDecrementBtn.disabled = (currentAreaIndex <= 0); if(areaIncrementBtn) areaIncrementBtn.disabled = (currentAreaIndex >= areaLetters.length - 1); }
-    function renderEntries() {
-        if (!entriesTableBody || !entryCountSpan || !noEntriesRow || !saveCsvBtn || !viewTallyBtn || !deleteAllBtn || !deleteBtn) return;
-        entriesTableBody.innerHTML = ''; entryCountSpan.textContent = collectedData.length; const hasData = collectedData.length > 0; noEntriesRow.hidden = hasData;
-        if (hasData) {
-            collectedData.forEach((entry, index) => { if (!entry.id) { entry.id = Date.now() + index; console.warn("Assigned temporary ID to entry:", entry); } });
-            for (let i = collectedData.length - 1; i >= 0; i--) { const entry = collectedData[i]; if (!entry) continue; const tr = document.createElement('tr'); tr.innerHTML = `<td><input type="checkbox" data-id="${entry.id}"></td><td>${entry.plotNumber ?? '?'}</td><td>${entry.areaLetter ?? '?'}</td><td>${entry.species ?? 'N/A'}</td><td>${entry.dbh ?? '?'}</td><td>${entry.logs ?? '?'}</td><td>${entry.cutStatus || 'No'}</td>`; entriesTableBody.appendChild(tr); }
-        }
-        saveCsvBtn.disabled = !hasData; viewTallyBtn.disabled = !hasData; deleteAllBtn.disabled = !hasData; deleteBtn.disabled = !isAnyCheckboxChecked();
-        updatePlotNumberAndAreaFromData(); calculateAndDisplayNeededPlots();
-    }
-    function isAnyCheckboxChecked() { return entriesTableBody && entriesTableBody.querySelector('input[type="checkbox"]:checked') !== null; }
 
-    // --- CSV Parsing Function ---
+    // DBH / Logs scroll wheels (scroll-wheel.js). Hidden inputs hold the values for submit.
+    // Trees 10" and under are always 0 logs; larger trees take 0.5–6 logs or Cull.
+    const DBH_MIN = 4, DBH_MAX = 40, DBH_STEP = 2, MAX_ZERO_LOG_DBH = 10;
+    const DBH_VALUES = [];
+    for (let d = DBH_MIN; d <= DBH_MAX; d += DBH_STEP) DBH_VALUES.push({ value: String(d), label: `${d}"` });
+    const LOG_CHOICES = ['0.5','1','1.5','2','2.5','3','3.5','4','4.5','5','5.5','6','Cull'];
+    const logsWheelValues = dbh => (parseInt(dbh, 10) <= MAX_ZERO_LOG_DBH ? ['0'] : LOG_CHOICES).map(v => ({ value: v, label: v }));
+    let dbhWheel = null, logsWheel = null;
+
+    function setLogsValue(v) {
+        if (logsSelect) logsSelect.value = v;
+        if (logsWheel && logsWheel.getValue() !== v) logsWheel.setValue(v);
+    }
+    function setDbhValue(val) {
+        const clamped = Math.max(DBH_MIN, Math.min(DBH_MAX, val));
+        if (dbhSelect) dbhSelect.value = String(clamped);
+        if (dbhWheel && dbhWheel.getValue() !== String(clamped)) dbhWheel.setValue(String(clamped));
+        checkAndSetLogsForDbh();
+        updateBorderlineText();
+    }
+    function populateDbhOptions() {
+        const el = document.getElementById('dbhWheel');
+        if (el && window.createScrollWheel) {
+            dbhWheel = window.createScrollWheel(el, { id: 'dbhWheelList', ariaLabel: 'Select DBH', values: DBH_VALUES, value: '10', onChange: v => setDbhValue(parseInt(v, 10)) });
+        }
+        setDbhValue(10);
+    }
+    function populateLogsOptions() {
+        const el = document.getElementById('logsWheel');
+        const vals = logsWheelValues(dbhSelect?.value || '10');
+        if (el && window.createScrollWheel && !logsWheel) {
+            logsWheel = window.createScrollWheel(el, { id: 'logsWheelList', ariaLabel: 'Select Logs', values: vals, value: vals[0].value, onChange: v => setLogsValue(v) });
+        }
+        setLogsValue(vals[0].value);
+    }
+
+    /** Keeps the Logs wheel's choices in step with DBH (moving above 10" starts at 1 log). */
+    function checkAndSetLogsForDbh() {
+        if (!dbhSelect || !logsSelect) return;
+        const vals = logsWheelValues(dbhSelect.value);
+        const cur = logsSelect.value;
+        const next = vals.some(v => v.value === cur) ? cur : (vals.length > 1 ? vals[1].value : vals[0].value);
+        if (logsWheel) logsWheel.setValues(vals, next);
+        setLogsValue(next);
+    }
+
+    // ---- Species quick-pick: the 8 most-used species (2 rows of 4), refreshed every 10 entries ----
+    const STARTER_SPECIES = ['White Oak', 'Red Oak', 'Yellow-poplar', 'Yellow Poplar', 'Hickory'];
+    let quickPickKey = null;
+    function topSpecies() {
+        const counts = new Map();
+        for (const e of collectedData) if (currentSpeciesList.includes(e.species)) counts.set(e.species, (counts.get(e.species) || 0) + 1);
+        const used = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([s]) => s);
+        // Fill the first row with starters until the user's own species do.
+        for (const s of STARTER_SPECIES) if (used.length < 4 && currentSpeciesList.includes(s) && !used.includes(s)) used.push(s);
+        return used;
+    }
+    /** Shorter forms of a name for a narrow button: regional words first (Northern → N.), then the most-shared word. */
+    const REGIONAL = { northern: 'N.', southern: 'S.', eastern: 'E.', western: 'W.', american: 'Am.' };
+    function speciesShortForms(name) {
+        const forms = [name];
+        const push = f => { if (!forms.includes(f)) forms.push(f); };
+        const initial = w => `${w[0].toUpperCase()}.`;
+        let words = name.trim().split(/\s+/);
+        if (words.length === 1) {
+            const dash = name.indexOf('-');
+            if (dash > 0 && dash < name.length - 1) push(`${initial(name)} ${name[dash + 1].toUpperCase()}${name.slice(dash + 2)}`);
+            return forms;
+        }
+        words = words.map(w => REGIONAL[w.toLowerCase()] || w);
+        push(words.join(' '));
+        const uses = w => currentSpeciesList.filter(s => s.toLowerCase().split(/[\s-]+/).includes(w.toLowerCase())).length;
+        const order = words.map((w, i) => ({ i, n: uses(w), abbr: w.endsWith('.') })).filter(x => !x.abbr).sort((a, b) => b.n - a.n || a.i - b.i);
+        for (const { i } of order.slice(0, -1)) {
+            words = words.map((w, j) => (j === i ? initial(w) : w));
+            push(words.join(' '));
+        }
+        return forms;
+    }
+    function fitQuickLabels(box) {
+        const btn = box.querySelector('.sp-btn:not(.species-quick-empty)');
+        const c2d = document.createElement('canvas').getContext('2d');
+        if (!btn || !c2d) return;
+        const cs = getComputedStyle(btn);
+        const room = btn.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        if (room <= 0) return;
+        c2d.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const taken = new Set();
+        box.querySelectorAll('.sp-btn[data-species]').forEach(b => {
+            const name = b.dataset.species;
+            const forms = speciesShortForms(name).filter(f => f === name || (!taken.has(f) && !currentSpeciesList.includes(f)));
+            const label = forms.find(f => c2d.measureText(f).width <= room) || forms[forms.length - 1];
+            b.textContent = label;
+            taken.add(label);
+        });
+    }
+    function renderSpeciesQuickPick(force) {
+        const box = document.getElementById('speciesQuick');
+        if (!box) return;
+        const n = collectedData.length;
+        const key = `${n < 20 ? n : Math.floor(n / 10) * 10}|${currentSpeciesList.join('|')}`;
+        if (force || key !== quickPickKey) {
+            quickPickKey = key;
+            const top = topSpecies();
+            const slots = top.length > 4 ? 8 : 4;
+            box.innerHTML = top.map(s => `<button type="button" class="sp-btn" data-species="${s.replace(/"/g, '&quot;')}" title="${s.replace(/"/g, '&quot;')}">${s}</button>`).join('')
+                + Array.from({ length: slots - top.length }, () => '<button type="button" class="sp-btn species-quick-empty" disabled aria-hidden="true" tabindex="-1"></button>').join('');
+            fitQuickLabels(box);
+        }
+        const cur = speciesSelect?.value;
+        box.querySelectorAll('.sp-btn[data-species]').forEach(b => b.classList.toggle('selected', b.dataset.species === cur));
+        if (speciesSelect) speciesSelect.classList.toggle('select-empty', !cur);
+    }
+
+    /** "· 3 trees" beside Plot # for the current plot. */
+    function updatePlotTreeCount() {
+        const el = document.getElementById('plotTreeCount');
+        if (!el) return;
+        const letter = areaLetters[currentAreaIndex];
+        const n = collectedData.filter(e => e.areaLetter === letter && e.plotNumber === currentPlotNumber && !e.emptyPlot).length;
+        el.textContent = n ? ` · ${n} tree${n === 1 ? '' : 's'}` : '';
+        updateEmptyPlotLine();
+    }
+
+    function setNotesOpen(open) {
+        const group = document.getElementById('notesGroup');
+        const btn = document.getElementById('notesToggleBtn');
+        const hasNote = !!notesTextarea?.value.trim();
+        if (group) group.hidden = !(open || hasNote);
+        if (btn) {
+            btn.classList.toggle('on', open || hasNote);
+            btn.setAttribute('aria-expanded', String(open || hasNote));
+            const dot = btn.querySelector('.tool-dot');
+            if (dot) dot.hidden = !hasNote;
+        }
+    }
+
+    function updatePlotDisplay() {
+        if (plotNumberDisplay) plotNumberDisplay.textContent = currentPlotNumber;
+        if (plotDecrementBtn) plotDecrementBtn.disabled = currentPlotNumber <= MIN_PLOT_NUMBER;
+        if (plotIncrementBtn) plotIncrementBtn.disabled = currentPlotNumber >= MAX_PLOT_NUMBER;
+        updatePlotTreeCount();
+    }
+
+    function updateAreaDisplay() {
+        if (areaLetterDisplay) areaLetterDisplay.textContent = areaLetters[currentAreaIndex];
+        if (areaDecrementBtn) areaDecrementBtn.disabled = currentAreaIndex <= 0;
+        if (areaIncrementBtn) areaIncrementBtn.disabled = currentAreaIndex >= areaLetters.length - 1;
+        updatePlotTreeCount();
+    }
+
+    function renderEntries() {
+        if (!entriesTableBody || !entryCountSpan || !noEntriesRow || !saveCsvBtn || !deleteAllBtn || !deleteBtn) return;
+        entriesTableBody.innerHTML = '';
+        entryCountSpan.textContent = collectedData.length;
+        const hasData = collectedData.length > 0;
+        noEntriesRow.hidden = hasData;
+        if (hasData) {
+            collectedData.forEach((entry, idx) => {
+                if (!entry.id) entry.id = Date.now() + idx;
+            });
+            for (let i = collectedData.length - 1; i >= 0; i--) {
+                const e = collectedData[i];
+                if (!e) continue;
+                const tr = document.createElement('tr');
+                tr.dataset.id = e.id;
+                if (e.emptyPlot) {
+                    tr.className = 'empty-plot-row';
+                    tr.innerHTML = `
+                    <td><input type="checkbox" data-id="${e.id}"></td>
+                    <td>${e.plotNumber ?? '?'}</td>
+                    <td>${e.areaLetter ?? '?'}</td>
+                    <td colspan="5">Empty plot (no tally trees)</td>`;
+                } else tr.innerHTML = `
+                    <td><input type="checkbox" data-id="${e.id}"></td>
+                    <td>${e.plotNumber ?? '?'}</td>
+                    <td>${e.areaLetter ?? '?'}</td>
+                    <td>${escHtml(e.species ?? 'N/A')}</td>
+                    <td>${escHtml(e.dbh ?? '?')}</td>
+                    <td>${escHtml(e.logs ?? '?')}</td>
+                    <td>${e.cutStatus || 'No'}</td>
+                    <td>${e.ugsStatus || 'No'}</td>`;
+                entriesTableBody.appendChild(tr);
+            }
+        }
+        saveCsvBtn.disabled = !hasData;
+        deleteAllBtn.disabled = !hasData;
+        deleteBtn.disabled = !isAnyCheckboxChecked();
+        calculateAndDisplayNeededPlots();
+        updatePlotTreeCount();
+        renderSpeciesQuickPick();
+    }
+
+    function isAnyCheckboxChecked() {
+        return entriesTableBody?.querySelector('input[type="checkbox"]:checked') !== null;
+    }
+
+    function calculateAndDisplayNeededPlots() {
+        if (!neededPlotsValue) return;
+        const letter = areaLetters[currentAreaIndex];
+        const areaData = collectedData.filter(e => e.areaLetter === letter);
+        const plotCount = new Set(areaData.map(e => e.plotNumber).filter(p => p != null)).size;
+        const stats = calculatePlotStats(areaData, currentBaf, currentLogRule, currentFormClass);
+
+        if (stats && plotCount >= 2 && stats.cvV > 0) {
+            const cv = stats.cvV, t = 2;
+            // Freese formula: n = ceil((t*CV/E)^2). Show 0/✓ if already met.
+            const needed = (E) => {
+                const n = Math.ceil(Math.pow(t * cv / E, 2));
+                return plotCount >= n ? 0 : n;
+            };
+            const n10 = needed(10), n20 = needed(20), n30 = needed(30);
+            const fmt = (n, label) => n === 0
+                ? `<span style="color:#28a745;font-weight:700;">${label}:✓</span>`
+                : `${label}:${n}`;
+            neededPlotsValue.innerHTML = `${fmt(n10,'10%')} ${fmt(n20,'20%')} ${fmt(n30,'30%')}`;
+        } else if (areaData.length > 0 && plotCount < 2) {
+            neededPlotsValue.textContent = 'Need ≥2 plots';
+        } else {
+            neededPlotsValue.textContent = '---';
+        }
+    }
+
+    // ============================================================
+    // TALLY & STATS
+
+    function displayTallyResults(tallyData) {
+        if (!tallyResults) return;
+        tallyResults.innerHTML = '';
+        const speciesKeys = Object.keys(tallyData).sort();
+        if (!speciesKeys.length) {
+            tallyResults.innerHTML = '<p class="no-tally-data">No data to tally.</p>';
+            return;
+        }
+        speciesKeys.forEach(species => {
+            const div = document.createElement('div');
+            div.classList.add('tally-species');
+            div.innerHTML = `<h3>${species}</h3>`;
+            const dbhKeys = Object.keys(tallyData[species]).sort((a,b) => Number(a)-Number(b));
+            dbhKeys.forEach(dbh => {
+                div.innerHTML += `<h4>DBH: ${dbh}"</h4>`;
+                const logKeys = Object.keys(tallyData[species][dbh]).sort((a,b) => {
+                    if (a==='Cull') return 1; if (b==='Cull') return -1;
+                    const nA=parseFloat(a), nB=parseFloat(b);
+                    return isNaN(nA)?1:isNaN(nB)?-1:nA-nB;
+                });
+                logKeys.forEach(logs => {
+                    const counts = tallyData[species][dbh][logs];
+                    const cut = counts['Yes'] || 0, notCut = counts['No'] || 0;
+                    if (cut > 0) div.innerHTML += `<div class="tally-log-item"><span class="log-label">Logs: ${logs} (Cut)</span> — <span class="log-count">${cut}</span></div>`;
+                    if (notCut > 0) div.innerHTML += `<div class="tally-log-item"><span class="log-label">Logs: ${logs} (Leave)</span> — <span class="log-count">${notCut}</span></div>`;
+                });
+            });
+            tallyResults.appendChild(div);
+        });
+    }
+
+    // ============================================================
+    // STOCKING CHART (wrapper — rendering delegated to charts.js)
+    // ============================================================
+    function renderStockingChart() {
+        const areaStats = calculateStandStocking(collectedData, currentBaf);
+        if (!areaStats?.length) {
+            if (stockingResults) stockingResults.style.display = 'none';
+            if (stockingNoData) stockingNoData.style.display = 'block';
+            return;
+        }
+        if (stockingNoData) stockingNoData.style.display = 'none';
+        if (stockingResults) stockingResults.style.display = 'block';
+
+        // Stats table
+        if (stockingStatsTable) {
+            let html = '<table><thead><tr><th>Area</th><th>Plots</th><th>Total TPA</th><th>Total BA/Ac</th><th>Cut TPA</th><th>Cut BA/Ac</th><th>Leave TPA</th><th>Leave BA/Ac</th></tr></thead><tbody>';
+            areaStats.forEach(s => {
+                html += `<tr>
+                    <td><strong>${s.area}</strong></td>
+                    <td>${s.numPlots}</td>
+                    <td>${s.totalTpa.toFixed(1)}</td>
+                    <td>${s.totalBa.toFixed(1)}</td>
+                    <td>${s.cutTpa.toFixed(1)}</td>
+                    <td>${s.cutBa.toFixed(1)}</td>
+                    <td>${s.leaveTpa.toFixed(1)}</td>
+                    <td>${s.leaveBa.toFixed(1)}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            stockingStatsTable.innerHTML = html;
+        }
+
+        // Delegate chart rendering to charts.js
+        const canvas = document.getElementById('stockingChartCanvas');
+        if (!canvas) return;
+        if (stockingChartInstance) { try { stockingChartInstance.destroy(); } catch(e) {} stockingChartInstance = null; }
+        stockingChartInstance = buildStockingChart(areaStats, canvas);
+    }
+
+    function renderTallyTab() {
+        if (!document.getElementById('tab-tally')?.classList.contains('active')) return;
+        const selectedArea = tallyAreaSelect?.value || 'ALL';
+        const subset = selectedArea === 'ALL'
+            ? collectedData
+            : collectedData.filter(e => e.areaLetter === selectedArea);
+
+        // Update area dropdown
+        updateTallyAreaDropdown();
+
+        // Summary cards
+        if (tallySummaryCards) {
+            if (subset.length === 0) {
+                tallySummaryCards.innerHTML = '<p class="placeholder-msg" style="padding:10px 12px; margin:0;">No data for selected area.</p>';
+            } else {
+                const report = calculateForestryReport(subset, currentBaf, currentLogRule, currentFormClass);
+                const s = report.summary;
+                tallySummaryCards.innerHTML = `
+                    <div class="stat-card">
+                        <span class="stat-value">${s.totalTreesPerAcre != null ? s.totalTreesPerAcre.toFixed(1) : '—'}</span>
+                        <span class="stat-label">Trees/Acre</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${s.totalBaPerAcre != null ? s.totalBaPerAcre.toFixed(1) : '—'}</span>
+                        <span class="stat-label">BA/Acre (sq ft)</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${s.avgTractDbh != null ? s.avgTractDbh.toFixed(1) + '"' : '—'}</span>
+                        <span class="stat-label">Avg DBH (QMD)</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${s.totalVolPerAcre != null ? Math.round(s.totalVolPerAcre) : '—'}</span>
+                        <span class="stat-label">Vol/Acre (BF)</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${s.numberOfPlots != null ? s.numberOfPlots : '—'}</span>
+                        <span class="stat-label">Plots</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${subset.filter(e => !e.emptyPlot).length}</span>
+                        <span class="stat-label">Tree Entries</span>
+                    </div>`;
+            }
+        }
+
+        // Tally breakdown
+        if (tallyResults) {
+            if (subset.length === 0) {
+                tallyResults.innerHTML = '<p class="placeholder-msg">No entries for this area.</p>';
+            } else {
+                displayTallyResults(generateTallyData(subset));
+            }
+        }
+
+        // In-app charts — charts.js manages instances
+        tallyChartInstances.forEach(c => { try { c.destroy(); } catch(e) {} });
+        tallyChartInstances = renderTallyCharts(subset, currentBaf, currentLogRule, currentFormClass, tallyChartsContainer);
+    }
+
+    function updateTallyAreaDropdown() {
+        if (!tallyAreaSelect) return;
+        const cur = tallyAreaSelect.value;
+        const areas = [...new Set(collectedData.map(e => e.areaLetter).filter(Boolean))].sort();
+        tallyAreaSelect.innerHTML = '<option value="ALL">All Areas</option>';
+        areas.forEach(a => {
+            const o = document.createElement('option');
+            o.value = o.textContent = a;
+            tallyAreaSelect.appendChild(o);
+        });
+        if (areas.includes(cur)) tallyAreaSelect.value = cur;
+        else tallyAreaSelect.value = 'ALL';
+    }
+
+    // ============================================================
+    // CSV PARSING
+    // ============================================================
     function parseCsvAndLoadData(csvContent) {
         const lines = csvContent.split(/\r?\n/);
-        let headerIndex = -1;
-        let headers = [];
-        for(let i = 0; i < lines.length; i++) {
-            const currentLine = lines[i].trim();
-            if (!currentLine) continue;
-            const potentialHeadersNormalized = currentLine.toLowerCase().split(',').map(h => h.trim().replace(/\s/g, ''));
-            if (potentialHeadersNormalized.includes('plotnumber') &&
-                potentialHeadersNormalized.includes('dbh') &&
-                potentialHeadersNormalized.includes('species') &&
-                potentialHeadersNormalized.includes('logs') &&
-                potentialHeadersNormalized.includes('cut')) {
+        let headerIndex = -1, headers = [];
+        for (let i = 0; i < lines.length; i++) {
+            const norm = lines[i].trim().toLowerCase().split(',').map(h => h.trim().replace(/\s/g,''));
+            if (norm.includes('plotnumber') && norm.includes('dbh') && norm.includes('species') && norm.includes('logs') && norm.includes('cut')) {
                 headerIndex = i;
                 headers = lines[i].trim().split(',').map(h => h.trim().toLowerCase());
                 break;
             }
         }
-        if (headerIndex === -1) throw new Error("CSV header containing 'PlotNumber, DBH, Species, Logs, Cut' not found.");
-
+        if (headerIndex === -1) throw new Error("CSV header not found. Requires: PlotNumber, DBH, Species, Logs, Cut");
         const idx = {
             p: headers.indexOf('plotnumber'), d: headers.indexOf('dbh'), sp: headers.indexOf('species'),
             l: headers.indexOf('logs'), c: headers.indexOf('cut'), n: headers.indexOf('notes'),
-            lat: headers.indexOf('latitude'), lon: headers.indexOf('longitude')
+            lat: headers.indexOf('latitude'), lon: headers.indexOf('longitude'), ugs: headers.indexOf('ugs')
         };
-        const requiredHeaderNames = ['plotnumber', 'dbh', 'species', 'logs', 'cut'];
-        const missingHeaders = requiredHeaderNames.filter(hName => headers.indexOf(hName) === -1);
-        if (missingHeaders.length > 0) throw new Error(`CSV missing required header columns: ${missingHeaders.join(', ')}.`);
-
         const parsedData = [];
         for (let i = headerIndex + 1; i < lines.length; i++) {
             const line = lines[i].trim();
-            if (!line || line.startsWith('---') || line.startsWith(',') || line.toLowerCase().startsWith('species,dbh,logs,cut status,count')) continue;
-            const values = []; let currentVal = ''; let inQuotes = false;
+            if (!line || line.startsWith('---') || line.startsWith(',')) continue;
+            const values = []; let cur = '', inQ = false;
             for (let j = 0; j < line.length; j++) {
-                const char = line[j]; const nextChar = line[j+1];
-                if (char === '"' && inQuotes && nextChar === '"') { currentVal += '"'; j++; }
-                else if (char === '"') { inQuotes = !inQuotes; }
-                else if (char === ',' && !inQuotes) { values.push(currentVal.trim()); currentVal = ''; }
-                else { currentVal += char; }
+                const c = line[j], nc = line[j+1];
+                if (c==='"' && inQ && nc==='"') { cur+='"'; j++; }
+                else if (c==='"') { inQ=!inQ; }
+                else if (c===',' && !inQ) { values.push(cur.trim()); cur=''; }
+                else cur += c;
             }
-            values.push(currentVal.trim());
-            const maxIndexUsed = Math.max(idx.p, idx.d, idx.sp, idx.l, idx.c, (idx.n > -1 ? idx.n : -1), (idx.lat > -1 ? idx.lat : -1), (idx.lon > -1 ? idx.lon : -1));
-            if (values.length <= maxIndexUsed) { console.warn(`Skipping malformed row ${i + 1}: Not enough columns. Line: "${line}"`); continue; }
+            values.push(cur.trim());
+            if (values.length <= Math.max(idx.p,idx.d,idx.sp,idx.l,idx.c)) continue;
             try {
-                const plotNumStr = values[idx.p], dbhStr = values[idx.d], specStr = values[idx.sp], logsStr = values[idx.l], cutStr = (values[idx.c] || 'No').trim();
-                const notesStr = (idx.n > -1 && values[idx.n]) ? values[idx.n] : '';
-                const latStr = (idx.lat > -1 && values[idx.lat]) ? values[idx.lat] : null;
-                const lonStr = (idx.lon > -1 && values[idx.lon]) ? values[idx.lon] : null;
-                if (!plotNumStr || !dbhStr || !specStr || !logsStr) { console.warn(`Skipping row ${i + 1}: Missing essential fields.`); continue; }
-                const plotNum = parseInt(plotNumStr, 10); if (isNaN(plotNum)) { console.warn(`Skipping row ${i + 1}: PlotNumber NaN.`); continue; }
-                const lat = latStr ? parseFloat(latStr) : null; const lon = lonStr ? parseFloat(lonStr) : null;
+                const plotNum = parseInt(values[idx.p], 10);
+                if (isNaN(plotNum)) continue;
+                const cutStr = (values[idx.c] || 'No').trim();
+                const ugsStr = (idx.ugs > -1 && values[idx.ugs]) ? values[idx.ugs].trim() : 'No';
+                const lat = idx.lat > -1 ? parseFloat(values[idx.lat]) : null;
+                const lon = idx.lon > -1 ? parseFloat(values[idx.lon]) : null;
+                if ((values[idx.sp] || '').trim().toUpperCase() === 'EMPTY PLOT') {
+                    parsedData.push({ id: Date.now() + i, emptyPlot: true, plotNumber: plotNum, dbh: '', species: '', logs: '', cutStatus: 'No', ugsStatus: 'No', notes: '',
+                        location: (lat!==null && lon!==null && !isNaN(lat) && !isNaN(lon)) ? {lat,lon} : null });
+                    continue;
+                }
                 parsedData.push({
-                    id: Date.now() + i, plotNumber: plotNum, dbh: dbhStr, species: specStr, logs: logsStr,
-                    cutStatus: cutStr.toLowerCase() === 'yes' ? 'Yes' : 'No', notes: notesStr,
-                    location: (lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon)) ? { lat: lat, lon: lon } : null
+                    id: Date.now() + i, plotNumber: plotNum, dbh: values[idx.d], species: values[idx.sp],
+                    logs: values[idx.l], cutStatus: cutStr.toLowerCase()==='yes'?'Yes':'No',
+                    ugsStatus: ugsStr.toLowerCase()==='yes'?'Yes':'No',
+                    notes: idx.n > -1 ? (values[idx.n]||'') : '',
+                    location: (lat!==null && lon!==null && !isNaN(lat) && !isNaN(lon)) ? {lat,lon} : null
                 });
-            } catch (parseError) { console.warn(`Skipping row ${i + 1} due to parsing error:`, parseError, `Line: "${line}"`); }
+            } catch(e) { continue; }
         }
-        console.log(`CSV Parsed. ${parsedData.length} entries found.`);
         return parsedData;
     }
 
-    // --- Tally Logic ---
-    function generateTallyData(dataSubset) {
-        const tally = {}; try { dataSubset.forEach((entry) => { if (!entry) return; const { species, dbh, logs, cutStatus } = entry; if (!species || !dbh || !logs || !cutStatus) return; const kS=String(species), kD=String(dbh), kL=String(logs), kC=String(cutStatus); if (!tally[kS]) tally[kS]={}; if (!tally[kS][kD]) tally[kS][kD]={}; if (!tally[kS][kD][kL]) tally[kS][kD][kL]={}; if (!tally[kS][kD][kL][kC]) tally[kS][kD][kL][kC]=0; tally[kS][kD][kL][kC]++; }); } catch (error) { console.error("Tally Gen Error:", error); } return tally;
-    }
-    function displayTallyResults(tallyData) { if(!tallyResultsContainer) return; tallyResultsContainer.innerHTML = ''; try { const speciesKeys = Object.keys(tallyData).sort(); if (speciesKeys.length === 0) { tallyResultsContainer.innerHTML = '<p class="no-tally-data">No data to tally.</p>'; return; } speciesKeys.forEach(species => { const speciesDiv = document.createElement('div'); speciesDiv.classList.add('tally-species'); speciesDiv.innerHTML = `<h3>${species}</h3>`; const dbhKeys = Object.keys(tallyData[species]).sort((a,b) => Number(a)-Number(b)); dbhKeys.forEach(dbh => { speciesDiv.innerHTML += `<h4>DBH: ${dbh}</h4>`; const logKeys = Object.keys(tallyData[species][dbh]).sort((a,b)=>{ if(a==='Cull')return 1; if(b==='Cull')return -1; const nA=parseFloat(a),nB=parseFloat(b); return isNaN(nA)?1:isNaN(nB)?-1:nA-nB; }); logKeys.forEach(logs => { const counts = tallyData[species][dbh][logs]; const cut = counts['Yes']||0; const notCut = counts['No']||0; if (cut > 0) { const div=document.createElement('div'); div.classList.add('tally-log-item'); div.innerHTML = `<span class="log-label">Logs: ${logs} (Cut) - </span><span class="log-count">Count: ${cut}</span>`; speciesDiv.appendChild(div); } if (notCut > 0) { const div=document.createElement('div'); div.classList.add('tally-log-item'); div.innerHTML = `<span class="log-label">Logs: ${logs} (Not Cut) - </span><span class="log-count">Count: ${notCut}</span>`; speciesDiv.appendChild(div); } }); }); tallyResultsContainer.appendChild(speciesDiv); }); } catch (error) { console.error("Tally Display Error:", error); tallyResultsContainer.innerHTML = `<p class="no-tally-data" style="color: red;">Error displaying tally.</p>`; } }
+    // ============================================================
+    // CSV FORMAT FOR EXPORT
 
-    // --- Forestry Report Calculation Logic ---
-    function getTreeVolume(dbhStr, logsStr, logRule, formClass = 78) {
-        try {
-            const dbhInt = parseInt(dbhStr, 10); if (isNaN(dbhInt) || dbhInt < 10) return 0;
-            const dbhKey = String(dbhInt); if (logsStr === 'Cull') return 0;
-            const logsNum = parseFloat(logsStr); if (isNaN(logsNum) || logsNum <= 0) return 0;
-            let logsKey = (Math.floor(logsNum * 2) / 2).toFixed(1);
-            if (parseFloat(logsKey) <= 0 && logsNum > 0) logsKey = '0.5'; else if (parseFloat(logsKey) <= 0) return 0;
-            let baseTable = null;
-            switch (logRule) { case 'Doyle': baseTable = DOYLE_FC78_VOLUMES; break; case 'Scribner': baseTable = SCRIBNER_FC78_VOLUMES; break; case 'International': baseTable = INTERNATIONAL_FC78_VOLUMES; break; default: return 0; }
-            let volume = 0; const dbhEntry = baseTable?.[dbhKey];
-            if (dbhEntry && dbhEntry.hasOwnProperty(logsKey)) {
-                const baseVol = dbhEntry[logsKey];
-                if (baseVol === undefined || baseVol === null || baseVol <= 0) { volume = 0; }
-                else if (logRule === 'Doyle') { let fcInt = parseInt(formClass, 10); if (isNaN(fcInt) || !VALID_DOYLE_FORM_CLASSES.includes(fcInt)) fcInt = 78; volume = (fcInt === 78) ? baseVol : Math.round(baseVol * (fcInt / 78.0)); }
-                else { volume = baseVol; }
-            }
-            return volume > 0 ? volume : 0;
-        } catch (e) { console.error(`getTreeVolume Error (DBH: ${dbhStr}, Logs: ${logsStr}, Rule: ${logRule}, FC: ${formClass}):`, e); return 0; }
-    }
-    function getDbhClass(dbh) { const numDbh = parseFloat(dbh); if (isNaN(numDbh)) return 'Invalid'; if (numDbh >= 2 && numDbh <= 5.9) return 'Sapling'; if (numDbh >= 6 && numDbh <= 11.9) return 'Poletimber'; if (numDbh >= 12 && numDbh <= 17.9) return 'Small Sawtimber'; if (numDbh >= 18 && numDbh <= 23.9) return 'Medium Sawtimber'; if (numDbh >= 24) return 'Large Sawtimber'; return 'Other'; }
-    function calculateForestryReport(dataSubset, baf, logRule, formClass) {
-        console.log(`Calculating report for subset: ${dataSubset.length} entries, BAF=${baf}, Rule=${logRule}, FC=${formClass}`);
-        const report = { summary: {}, standDistribution: {}, speciesSummary1: {}, speciesSummary2: {} };
-        if (!dataSubset || dataSubset.length === 0) return report;
-        const plotNums = new Set(dataSubset.map(e => e?.plotNumber).filter(p => p != null && !isNaN(parseInt(p, 10))));
-        const numPlots = plotNums.size;
-        if (numPlots === 0) { report.summary = { numberOfPlots: 0, error: "No valid plot numbers found in this subset." }; console.warn("No valid plots found for subset report calculation."); return report; }
-        let totTrees = 0, cutTrees = 0, totTpaSum = 0, totVolSum = 0, cutTpaSum = 0, cutVolSum = 0;
-        const specData = {}; const clsData = { 'Sapling':{s:0,c:0,t:0,v:0,ct:0},'Poletimber':{s:0,c:0,t:0,v:0,ct:0},'Small Sawtimber':{s:0,c:0,t:0,v:0,ct:0},'Medium Sawtimber':{s:0,c:0,t:0,v:0,ct:0},'Large Sawtimber':{s:0,c:0,t:0,v:0,ct:0},'Other':{s:0,c:0,t:0,v:0,ct:0},'Invalid':{s:0,c:0,t:0,v:0,ct:0} };
-        dataSubset.forEach((entry) => { if (!entry) return; const dbh = parseFloat(entry.dbh); const spec = entry.species; const isCut = entry.cutStatus === 'Yes'; if (isNaN(dbh) || dbh <= 0 || !spec || spec.trim() === "") { clsData['Invalid'].s++; if (isCut) clsData['Invalid'].c++; return; } const dbhCls = getDbhClass(dbh); totTrees++; if (isCut) cutTrees++; const baT = BA_CONST * Math.pow(dbh, 2); const tpaT = (baT > 0) ? (baf / baT) : 0; const volT = getTreeVolume(entry.dbh, entry.logs, logRule, formClass); const vpaT = volT * tpaT; totTpaSum += tpaT; totVolSum += vpaT; if (isCut) { cutTpaSum += tpaT; cutVolSum += vpaT; } if (!specData[spec]) { specData[spec] = { s: 0, c: 0, t: 0, v: 0, vS: 0, vM: 0, vL: 0, tpaSap: 0, tpaPole: 0, tpaSaw: 0 }; } specData[spec].s++; specData[spec].t += tpaT; specData[spec].v += vpaT; if (isCut) specData[spec].c++; if (dbhCls === 'Small Sawtimber') specData[spec].vS += vpaT; else if (dbhCls === 'Medium Sawtimber') specData[spec].vM += vpaT; else if (dbhCls === 'Large Sawtimber') specData[spec].vL += vpaT; if (dbhCls === 'Sapling') specData[spec].tpaSap += tpaT; else if (dbhCls === 'Poletimber') specData[spec].tpaPole += tpaT; else if (dbhCls.includes('Sawtimber')) specData[spec].tpaSaw += tpaT; if (clsData[dbhCls]) { clsData[dbhCls].s++; clsData[dbhCls].t += tpaT; clsData[dbhCls].v += vpaT; if (isCut) { clsData[dbhCls].c++; clsData[dbhCls].ct += tpaT; } } else { clsData['Invalid'].s++; if (isCut) clsData['Invalid'].c++; } });
-        const treesPerAcre = (numPlots > 0) ? (totTpaSum / numPlots) : 0; const treesPerAcreCut = (numPlots > 0) ? (cutTpaSum / numPlots) : 0; const treesPerAcreLeave = treesPerAcre - treesPerAcreCut; const volPerAcre = (numPlots > 0) ? (totVolSum / numPlots) : 0; const volPerAcreCut = (numPlots > 0) ? (cutVolSum / numPlots) : 0; const volPerAcreLeave = volPerAcre - volPerAcreCut; const baPerAcre = (numPlots > 0) ? (totTrees * baf) / numPlots : 0; const baPerAcreCut = (numPlots > 0) ? (cutTrees * baf) / numPlots : 0; const baPerAcreLeave = baPerAcre - baPerAcreCut; const qmd = (treesPerAcre > 0 && baPerAcre > 0) ? Math.sqrt((baPerAcre / treesPerAcre) / BA_CONST) : 0; report.summary = { numberOfPlots: numPlots, totalTreesPerAcre: treesPerAcre, treesPerAcreCut: treesPerAcreCut, treesPerAcreLeave: treesPerAcreLeave, totalBaPerAcre: baPerAcre, baPerAcreCut: baPerAcreCut, baPerAcreLeave: baPerAcreLeave, avgTractDbh: qmd, totalVolPerAcre: volPerAcre, volumePerAcreCut: volPerAcreCut, volumePerAcreLeave: volPerAcreLeave, bafUsed: baf, logRuleUsed: logRule, formClassUsed: logRule === 'Doyle' ? formClass : 'N/A' };
-        const clsOrder = ['Sapling', 'Poletimber', 'Small Sawtimber', 'Medium Sawtimber', 'Large Sawtimber', 'Other', 'Invalid']; let sumClsPercStems = 0, sumClsBaPA = 0, sumClsBaPACut = 0, sumClsBaPALeave = 0, sumClsVolPA = 0, sumClsPercBa = 0, sumClsPercVol = 0; let sumClsTpaCut = 0, sumClsTpaLeave = 0; clsOrder.forEach(cls => { const cInfo = clsData[cls] || { s: 0, c: 0, t: 0, v: 0, ct: 0 }; const clsTpa = (numPlots > 0) ? (cInfo.t / numPlots) : 0; const clsVolPA = (numPlots > 0) ? (cInfo.v / numPlots) : 0; const clsBaPerAcre = (numPlots > 0) ? (cInfo.s * baf) / numPlots : 0; const clsBaPerAcreCut = (numPlots > 0) ? (cInfo.c * baf) / numPlots : 0; const clsBaPerAcreLeave = clsBaPerAcre - clsBaPerAcreCut; const clsTpaCut = (numPlots > 0) ? (cInfo.ct / numPlots) : 0; const clsTpaLeave = clsTpa - clsTpaCut; const percStems = treesPerAcre > 0 ? (clsTpa / treesPerAcre) * 100 : 0; const percBa = baPerAcre > 0 ? (clsBaPerAcre / baPerAcre) * 100 : 0; const percVol = volPerAcre > 0 ? (clsVolPA / volPerAcre) * 100 : 0; report.standDistribution[cls] = { percentTotalStems: percStems, baSqFtPerAcreCut: clsBaPerAcreCut, baSqFtPerAcreLeave: clsBaPerAcreLeave, baSqFtPerAcreTotal: clsBaPerAcre, percentBa: percBa, volumeBfPerAcre: clsVolPA, percentVolume: percVol, tpaPerAcreCut: clsTpaCut, tpaPerAcreLeave: clsTpaLeave }; sumClsPercStems += percStems; sumClsBaPACut += clsBaPerAcreCut; sumClsBaPALeave += clsBaPerAcreLeave; sumClsBaPA += clsBaPerAcre; sumClsPercBa += percBa; sumClsVolPA += clsVolPA; sumClsPercVol += percVol; sumClsTpaCut += clsTpaCut; sumClsTpaLeave += clsTpaLeave; }); report.standDistribution['TOTALS'] = { percentTotalStems: sumClsPercStems, baSqFtPerAcreCut: sumClsBaPACut, baSqFtPerAcreLeave: sumClsBaPALeave, baSqFtPerAcreTotal: sumClsBaPA, percentBa: sumClsPercBa, volumeBfPerAcre: sumClsVolPA, percentVolume: sumClsPercVol, tpaPerAcreCut: sumClsTpaCut, tpaPerAcreLeave: sumClsTpaLeave };
-        const sortedSpec1 = Object.keys(specData).sort(); let sumSpecPercStems = 0, sumSpecPercSaw = 0, sumSpecPercPole = 0, sumSpecPercSap = 0; sortedSpec1.forEach(spec => { const spD = specData[spec]; const spTpa = (numPlots > 0) ? (spD.t / numPlots) : 0; const spTpaSawPA = (numPlots > 0) ? (spD.tpaSaw / numPlots) : 0; const spTpaPolePA = (numPlots > 0) ? (spD.tpaPole / numPlots) : 0; const spTpaSapPA = (numPlots > 0) ? (spD.tpaSap / numPlots) : 0; const percTotalStems = treesPerAcre > 0 ? (spTpa / treesPerAcre) * 100 : 0; const percSawtimber = treesPerAcre > 0 ? (spTpaSawPA / treesPerAcre) * 100 : 0; const percPoletimber = treesPerAcre > 0 ? (spTpaPolePA / treesPerAcre) * 100 : 0; const percSapling = treesPerAcre > 0 ? (spTpaSapPA / treesPerAcre) * 100 : 0; report.speciesSummary1[spec] = { percentTotalStems: percTotalStems, sawtimberPercent: percSawtimber, poletimberPercent: percPoletimber, saplingPercent: percSapling }; sumSpecPercStems += percTotalStems; sumSpecPercSaw += percSawtimber; sumSpecPercPole += percPoletimber; sumSpecPercSap += percSapling; }); report.speciesSummary1['TOTALS'] = { percentTotalStems: sumSpecPercStems, sawtimberPercent: sumSpecPercSaw, poletimberPercent: sumSpecPercPole, saplingPercent: sumSpecPercSap };
-        let sumSpecVolPA = 0, sumSpecVolS = 0, sumSpecVolM = 0, sumSpecVolL = 0, sumSpecPercVol = 0; const sortedSpec2 = Object.keys(specData).sort(); sortedSpec2.forEach(spec => { const spD = specData[spec]; const spVolA = (numPlots > 0) ? (spD.v / numPlots) : 0; const spVolS = (numPlots > 0) ? (spD.vS / numPlots) : 0; const spVolM = (numPlots > 0) ? (spD.vM / numPlots) : 0; const spVolL = (numPlots > 0) ? (spD.vL / numPlots) : 0; const spPercVol = volPerAcre > 0 ? (spVolA / volPerAcre) * 100 : 0; report.speciesSummary2[spec] = { volSmallPerAcre: spVolS, volMediumPerAcre: spVolM, volLargePerAcre: spVolL, totalSpeciesVolPerAcre: spVolA, percentTotalVolume: spPercVol }; sumSpecVolPA += spVolA; sumSpecVolS += spVolS; sumSpecVolM += spVolM; sumSpecVolL += spVolL; sumSpecPercVol += spPercVol; }); report.speciesSummary2['TOTALS'] = { volSmallPerAcre: sumSpecVolS, volMediumPerAcre: sumSpecVolM, volLargePerAcre: sumSpecVolL, totalSpeciesVolPerAcre: sumSpecVolPA, percentTotalVolume: sumSpecPercVol };
-        console.log("Subset report calculation finished."); return report;
-    }
-    function formatReportForCsv(report) { const fmt = (n, d = 1) => !isNaN(parseFloat(n)) ? parseFloat(n).toFixed(d) : '0.0'; const fmtI = (n) => !isNaN(parseFloat(n)) ? parseFloat(n).toFixed(0) : '0'; const fmtP = (n, d = 1) => !isNaN(parseFloat(n)) ? parseFloat(n).toFixed(d) + '%' : '0.0%'; console.log("Formatting report for CSV..."); if (!report || !report.summary || report.summary.numberOfPlots === undefined) { console.error("Incomplete report data for CSV formatting."); return "\n--- FORESTRY REPORT DATA ---\nError: Report data incomplete or missing.\n"; } const sum = report.summary; const baf = sum.bafUsed ?? 'N/A'; const rule = sum.logRuleUsed ?? 'N/A'; const fc = sum.formClassUsed ?? 'N/A'; let csv = `\n\n--- FORESTRY REPORT DATA (Settings: BAF=${baf}, Rule=${rule}${rule === 'Doyle' ? `, FC=${fc}` : ''}) ---\n`; csv += `TOTAL VOLUME/ACRE (BF),${fmtI(sum.totalVolPerAcre)},,VOL/ACRE CUT (BF),${fmtI(sum.volumePerAcreCut)},,VOL/ACRE LEAVE (BF),${fmtI(sum.volumePerAcreLeave)}\n`; csv += `AVG DBH (QMD),${fmt(sum.avgTractDbh, 1)},,TOTAL TREES/ACRE,${fmt(sum.totalTreesPerAcre, 1)},,NUMBER OF PLOTS,${fmtI(sum.numberOfPlots)}\n`; csv += `TOTAL BA/ACRE (SQ FT),${fmt(sum.totalBaPerAcre, 1)},,TREES/ACRE CUT,${fmt(sum.treesPerAcreCut, 1)},,TREES/ACRE LEAVE,${fmt(sum.treesPerAcreLeave, 1)}\n`; csv += `BA/ACRE CUT (SQ FT),${fmt(sum.baPerAcreCut, 1)},,BA/ACRE LEAVE (SQ FT),${fmt(sum.baPerAcreLeave, 1)},,\n\n`; csv += "STAND DISTRIBUTION,STEMS (%),\"BA/ACRE (SQ FT)\",,,\"BA (%)\",\"VOL/ACRE (BF)\",\"VOL (%)\",\"TPA/ACRE Cut\",\"TPA/ACRE Leave\"\n"; csv += ",,\"Cut\",\"Leave\",\"Total\",,,\n"; const clsOrd = ['Sapling', 'Poletimber', 'Small Sawtimber', 'Medium Sawtimber', 'Large Sawtimber', 'Other', 'Invalid', 'TOTALS']; const clsLbl = { 'Sapling': 'SAPLINGS (2-5.9")', 'Poletimber': 'POLETIMBER (6-11.9")', 'Small Sawtimber': 'S SAW (12-17.9")', 'Medium Sawtimber': 'M SAW (18-23.9")', 'Large Sawtimber': 'L SAW (24"+)', 'Other': 'OTHER', 'Invalid': 'INVALID', 'TOTALS': 'TOTALS' }; clsOrd.forEach(cls => { const d = report.standDistribution[cls] || {}; const lbl = clsLbl[cls] || cls; csv += `"${lbl}",${fmtP(d.percentTotalStems)},${fmt(d.baSqFtPerAcreCut, 1)},${fmt(d.baSqFtPerAcreLeave, 1)},${fmt(d.baSqFtPerAcreTotal, 1)},${fmtP(d.percentBa)},${fmtI(d.volumeBfPerAcre)},${fmtP(d.percentVolume)},${fmt(d.tpaPerAcreCut, 1)},${fmt(d.tpaPerAcreLeave, 1)}\n`; }); csv += "\n"; csv += "SPECIES COMPOSITION (Based on % Total TPA),STEMS (%),SAW (%),POLE (%),SAP (%)\n"; const spec1Ord = [...Object.keys(report.speciesSummary1).filter(s => s !== 'TOTALS').sort(), 'TOTALS']; spec1Ord.forEach(spec => { const d = report.speciesSummary1[spec] || {}; const lbl = spec === 'TOTALS' ? "TOTALS" : `"${spec}"`; csv += `${lbl},${fmtP(d.percentTotalStems)},${fmtP(d.sawtimberPercent)},${fmtP(d.poletimberPercent)},${fmtP(d.saplingPercent)}\n`; }); csv += "\n"; csv += "\"VOL/ACRE (BF) BY SPECIES\",\"S SAW (12-17.9\")\",\"M SAW (18-23.9\")\",\"L SAW (24\"+)\",\"TOTAL SPEC VOL/ACRE\",\"TOTAL VOL (%)\"\n"; const spec2Ord = [...Object.keys(report.speciesSummary2).filter(s => s !== 'TOTALS').sort(), 'TOTALS']; spec2Ord.forEach(spec => { const d = report.speciesSummary2[spec] || {}; const lbl = spec === 'TOTALS' ? "TOTALS" : `"${spec}"`; csv += `${lbl},${fmtI(d.volSmallPerAcre)},${fmtI(d.volMediumPerAcre)},${fmtI(d.volLargePerAcre)},${fmtI(d.totalSpeciesVolPerAcre)},${fmtP(d.percentTotalVolume)}\n`; }); console.log("CSV formatting complete."); return csv; }
-    function calculatePlotStats(dataSubset, baf, logRule, formClass) { if (!dataSubset || dataSubset.length === 0) return null; const plots = {}; dataSubset.forEach(e => { if (e?.plotNumber) { const pNum = parseInt(e.plotNumber, 10); if (!isNaN(pNum)) { if (!plots[pNum]) plots[pNum] = []; plots[pNum].push(e); } } }); const plotNs = Object.keys(plots).map(Number).sort((a, b) => a - b); if (plotNs.length === 0) return null; const plotVolumes = []; plotNs.forEach(pN => { let plotVPA = 0; plots[pN].forEach(t => { try { if (!t?.dbh || !t?.logs) return; const dbh = parseFloat(t.dbh); if (isNaN(dbh) || dbh <= 0) return; const baT = BA_CONST * Math.pow(dbh, 2); if (baT <= 0) return; const tpaT = baf / baT; const volT = getTreeVolume(t.dbh, t.logs, logRule, formClass); plotVPA += (volT * tpaT); } catch (e) { console.error(`Volume calculation error in plot ${pN}:`, t, e); } }); plotVolumes.push(Math.round(plotVPA)); }); const n = plotVolumes.length; if (n < 2) return { meanV: (n === 1 ? plotVolumes[0] : 0), stdDevV: 0, cvV: 0, numValidPlots: n, plotVolumes }; const sumV = plotVolumes.reduce((a, v) => a + v, 0); const meanV = sumV / n; const sqDiffs = plotVolumes.reduce((a, v) => a + Math.pow(v - meanV, 2), 0); const varianceV = sqDiffs / (n - 1); const stdDevV = Math.sqrt(varianceV); const cvV = (meanV !== 0) ? (stdDevV / meanV) * 100 : 0; return { meanV, stdDevV, cvV, numValidPlots: n, plotVolumes }; }
-    function calculateAndDisplayNeededPlots() { if (!neededPlotsValue) return; const currentLetter = areaLetters[currentAreaIndex]; const areaData = collectedData.filter(entry => entry.areaLetter === currentLetter); const plotCountInArea = new Set(areaData.map(e => e.plotNumber)).size; const stats = calculatePlotStats(areaData, currentBaf, currentLogRule, currentFormClass); let displayValue = "---"; let logMessage = `Calculating needed plots for Area ${currentLetter}: `; if (stats && plotCountInArea >= 2 && stats.cvV > 0) { const E10 = 10; const E20 = 20; const t = 2; const cv = stats.cvV; const n10_float = Math.pow((t * cv / E10), 2); const n10_rounded = Math.ceil(n10_float); const n20_float = Math.pow((t * cv / E20), 2); const n20_rounded = Math.ceil(n20_float); displayValue = `10%: ${n10_rounded} / 20%: ${n20_rounded}`; logMessage += `CV=${cv.toFixed(1)}%, n(10%)=${n10_float.toFixed(2)}->${n10_rounded}, n(20%)=${n20_float.toFixed(2)}->${n20_rounded}. (${plotCountInArea} plots in area)`; } else if (areaData.length > 0 && plotCountInArea < 2) { displayValue = "N/A (<2 plots in Area)"; logMessage += `N/A (<2 plots in this area).`; } else if (areaData.length === 0) { displayValue = "--- (No data in Area)"; logMessage += `--- (No data in this area).`; } else { displayValue = "--- (Calc Error?)"; logMessage += `--- (Zero CV or calculation error in area).`; } neededPlotsValue.textContent = displayValue; console.log(logMessage); }
-
-    // --- Chart Generation Functions ---
-    function destroyExistingChart(canvasId) { // This function might not be used if you're creating new canvases each time
-        const existingChart = Chart.getChart(canvasId);
-        if (existingChart) {
-            existingChart.destroy();
-        }
-    }
-
-    /** Generates BA Distribution Chart ON A GIVEN CANVAS */
-    function generateBaChart(report, canvasElement) {
-        if (!canvasElement || !report?.standDistribution) {
-             console.error("generateBaChart: Invalid canvasElement or report data.");
-             return null;
-        }
-        const dist = report.standDistribution;
-        const labels = ['Sapling', 'Poletimber', 'S Saw', 'M Saw', 'L Saw', 'Other'];
-        const classMap = { 'Sapling': 'Sapling', 'Poletimber': 'Poletimber', 'Small Sawtimber': 'S Saw', 'Medium Sawtimber': 'M Saw', 'Large Sawtimber': 'L Saw', 'Other': 'Other' };
-        const leaveData = labels.map(lbl => dist[Object.keys(classMap).find(key => classMap[key] === lbl)]?.baSqFtPerAcreLeave || 0);
-        const cutData = labels.map(lbl => dist[Object.keys(classMap).find(key => classMap[key] === lbl)]?.baSqFtPerAcreCut || 0);
-
-        try {
-            return new Chart(canvasElement, {
-                type: 'bar',
-                data: { labels: labels, datasets: [ { label: 'Leave BA/Acre', data: leaveData, backgroundColor: 'rgba(75, 192, 192, 0.6)', borderColor: 'rgba(75, 192, 192, 1)', borderWidth: 1 }, { label: 'Cut BA/Acre', data: cutData, backgroundColor: 'rgba(255, 99, 132, 0.6)', borderColor: 'rgba(255, 99, 132, 1)', borderWidth: 1 } ] },
-                options: {
-                    animation: false,
-                    plugins: {
-                        customCanvasBackgroundColor: { color: 'white' },
-                        title: { display: true, text: 'Basal Area Distribution (SqFt/Acre)', font: { size: 18, weight: 'bold' }, color: '#000000' },
-                        tooltip: { mode: 'index' }
-                    },
-                    responsive: false, maintainAspectRatio: false,
-                    scales: {
-                        x: { stacked: true, title: { display: true, text: 'DBH Class', font: { size: 14, weight: 'bold' }, color: '#000000' } },
-                        y: { stacked: true, title: { display: true, text: 'BA / Acre (Sq Ft)', font: { size: 14, weight: 'bold' }, color: '#000000' }, beginAtZero: true }
-                    }
-                 }
-            });
-        } catch (error) { console.error("Error creating BA Chart:", error); return null; }
-    }
-
-    /** Generates TPA Distribution Chart ON A GIVEN CANVAS */
-    function generateTpaChart(report, canvasElement) {
-        if (!canvasElement || !report?.standDistribution) { console.error("generateTpaChart: Invalid canvasElement or report data."); return null; }
-        const dist = report.standDistribution;
-        const labels = ['Sapling', 'Poletimber', 'S Saw', 'M Saw', 'L Saw', 'Other'];
-        const classMap = { 'Sapling': 'Sapling', 'Poletimber': 'Poletimber', 'Small Sawtimber': 'S Saw', 'Medium Sawtimber': 'M Saw', 'Large Sawtimber': 'L Saw', 'Other': 'Other' };
-        const leaveData = labels.map(lbl => dist[Object.keys(classMap).find(key => classMap[key] === lbl)]?.tpaPerAcreLeave || 0);
-        const cutData = labels.map(lbl => dist[Object.keys(classMap).find(key => classMap[key] === lbl)]?.tpaPerAcreCut || 0);
-        try {
-             return new Chart(canvasElement, {
-                type: 'bar', data: { labels: labels, datasets: [ { label: 'Leave TPA', data: leaveData, backgroundColor: 'rgba(75, 192, 192, 0.6)', borderColor: 'rgba(75, 192, 192, 1)', borderWidth: 1 }, { label: 'Cut TPA', data: cutData, backgroundColor: 'rgba(255, 99, 132, 0.6)', borderColor: 'rgba(255, 99, 132, 1)', borderWidth: 1 } ] },
-                options: {
-                    animation: false,
-                    plugins: {
-                        customCanvasBackgroundColor: { color: 'white' },
-                        title: { display: true, text: 'Trees Per Acre Distribution', font: { size: 18, weight: 'bold' }, color: '#000000' },
-                        tooltip: { mode: 'index' }
-                    },
-                    responsive: false, maintainAspectRatio: false,
-                    scales: {
-                        x: { stacked: true, title: { display: true, text: 'DBH Class', font: { size: 14, weight: 'bold' }, color: '#000000' } },
-                        y: { stacked: true, title: { display: true, text: 'Trees / Acre', font: { size: 14, weight: 'bold' }, color: '#000000' }, beginAtZero: true }
-                    }
-                }
-            });
-        } catch (error) { console.error("Error creating TPA Chart:", error); return null; }
-    }
-
-    /** Generates Volume by Species Chart ON A GIVEN CANVAS */
-    function generateVolSpeciesChart(report, canvasElement) {
-        if (!canvasElement || !report?.speciesSummary2) { console.error("generateVolSpeciesChart: Invalid canvasElement or report data."); return null; }
-        const speciesVol = report.speciesSummary2;
-        const sortedSpecies = Object.entries(speciesVol).filter(([spec, data]) => spec !== 'TOTALS' && data && data.totalSpeciesVolPerAcre > 0).sort(([, dataA], [, dataB]) => dataB.totalSpeciesVolPerAcre - dataA.totalSpeciesVolPerAcre);
-        const labels = sortedSpecies.map(([spec]) => spec);
-        const data = sortedSpecies.map(([, specData]) => specData.totalSpeciesVolPerAcre);
-        try {
-            return new Chart(canvasElement, {
-                type: 'bar', data: { labels: labels, datasets: [{ label: 'Total Vol/Acre', data: data, backgroundColor: 'rgba(54, 162, 235, 0.6)', borderColor: 'rgba(54, 162, 235, 1)', borderWidth: 1 }] },
-                options: {
-                    animation: false, indexAxis: 'y',
-                    plugins: {
-                        customCanvasBackgroundColor: { color: 'white' },
-                        title: { display: true, text: 'Volume by Species (BF/Acre)', font: { size: 18, weight: 'bold' }, color: '#000000' },
-                        legend: { display: false }
-                    },
-                    responsive: false, maintainAspectRatio: false,
-                    scales: {
-                        x: { title: { display: true, text: 'Board Feet / Acre', font: { size: 14, weight: 'bold' }, color: '#000000' }, beginAtZero: true },
-                        y: { title: { display: true, text: 'Species', font: { size: 14, weight: 'bold' }, color: '#000000' } }
-                    }
-                 }
-            });
-         } catch (error) { console.error("Error creating Vol Species Chart:", error); return null; }
-    }
-
-    /** Generates Sawtimber Volume by Species Chart ON A GIVEN CANVAS */
-    function generateVolSawtimberChart(report, canvasElement) {
-        if (!canvasElement || !report?.speciesSummary2) { console.error("generateVolSawtimberChart: Invalid canvasElement or report data."); return null; }
-        const speciesVol = report.speciesSummary2;
-        const sortedSpecies = Object.entries(speciesVol).filter(([spec, data]) => spec !== 'TOTALS' && data && (data.volSmallPerAcre > 0 || data.volMediumPerAcre > 0 || data.volLargePerAcre > 0))
-                               .map(([spec, data]) => ({ species: spec, small: data.volSmallPerAcre || 0, medium: data.volMediumPerAcre || 0, large: data.volLargePerAcre || 0, totalSaw: (data.volSmallPerAcre || 0) + (data.volMediumPerAcre || 0) + (data.volLargePerAcre || 0) }))
-                               .sort((a, b) => b.totalSaw - a.totalSaw);
-        const labels = sortedSpecies.map(item => item.species);
-        const smallData = sortedSpecies.map(item => item.small);
-        const mediumData = sortedSpecies.map(item => item.medium);
-        const largeData = sortedSpecies.map(item => item.large);
-        try {
-            return new Chart(canvasElement, {
-                type: 'bar', data: { labels: labels, datasets: [ { label: 'S Saw Vol/Acre (12-17.9")', data: smallData, backgroundColor: 'rgba(255, 206, 86, 0.6)', borderColor: 'rgba(255, 206, 86, 1)', borderWidth: 1 }, { label: 'M Saw Vol/Acre (18-23.9")', data: mediumData, backgroundColor: 'rgba(255, 159, 64, 0.6)', borderColor: 'rgba(255, 159, 64, 1)', borderWidth: 1 }, { label: 'L Saw Vol/Acre (24"+)', data: largeData, backgroundColor: 'rgba(153, 102, 255, 0.6)', borderColor: 'rgba(153, 102, 255, 1)', borderWidth: 1 } ] },
-                options: {
-                    animation: false,
-                    plugins: {
-                        customCanvasBackgroundColor: { color: 'white' },
-                        title: { display: true, text: 'Sawtimber Volume Distribution by Species (BF/Acre)', font: { size: 18, weight: 'bold' }, color: '#000000' },
-                        tooltip: { mode: 'index' }
-                    },
-                    responsive: false, maintainAspectRatio: false,
-                    scales: {
-                        x: { stacked: true, title: { display: true, text: 'Species', font: { size: 14, weight: 'bold' }, color: '#000000' } },
-                        y: { stacked: true, title: { display: true, text: 'Board Feet / Acre', font: { size: 14, weight: 'bold' }, color: '#000000' }, beginAtZero: true }
-                    }
-                }
-            });
-         } catch (error) { console.error("Error creating Sawtimber Vol Chart:", error); return null; }
-    }
-
-    function downloadDataUrlAsJpg(dataUrl, filename) { // Renamed but handles PNG too
-        if (!dataUrl || !filename) {
-            console.error("downloadDataUrlAsJpg: Missing dataUrl or filename.");
-            return;
-        }
-        try {
-            const link = document.createElement('a');
-            link.href = dataUrl;
-            link.download = filename;
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            console.log(`Initiated download for: ${filename}`);
-        } catch (error) {
-            console.error(`Error downloading ${filename} from data URL:`, error);
-            showFeedback(`Error saving graph ${filename}. See console.`, true, 5000);
-        }
-    }
-
-    // --- CSV Generation Function ---
+    // ============================================================
+    // CSV EXPORT
+    // ============================================================
     async function generateAndDownloadCsv() {
-        if (collectedData.length === 0) { showFeedback("No data to save.", true); return; }
-
+        if (!collectedData.length) { showFeedback("No data to save.", true); return; }
         const selBaf = currentBaf, selRule = currentLogRule, selFc = currentFormClass;
-        const generateGraphsEnabled = currentGenerateGraphs === 'Yes';
+        const graphsEnabled = currentGenerateGraphs === 'Yes';
+        const zipMode       = currentZipExport === 'Yes';
+        showFeedback(zipMode ? "Building ZIP..." : "Generating CSV(s)...", false, 10000);
 
-        console.log(`Generating outputs: BAF=${selBaf}, Rule=${selRule}, FC=${selFc}, Graphs=${generateGraphsEnabled}`);
-        showFeedback("Starting CSV/Graph generation...", false, 10000);
+        let zip = null;
+        if (zipMode) {
+            if (typeof JSZip === 'undefined') {
+                showFeedback("JSZip not loaded. Check internet connection.", true, 5000);
+                return;
+            }
+            zip = new JSZip();
+        }
 
-        try {
-            const groupedData = collectedData.reduce((acc, entry) => {
-                const area = entry.areaLetter || 'Unknown';
-                if (!acc[area]) acc[area] = [];
-                acc[area].push(entry);
-                return acc;
-            }, {});
+        function triggerDownload(url, filename) {
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            a.style.visibility = 'hidden';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
 
-            const sortedAreas = Object.keys(groupedData).sort();
-            if (sortedAreas.length === 0) { showFeedback("No areas found in data.", true); return; }
-
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/[-T:]/g, "");
-            const projNameBase = projectNameInput?.value.trim().replace(/[^a-z0-9_\-]/gi, '_') || 'TimberTally';
-            const chartWidth = 800; 
-            const chartHeight = 500; 
-
-            let areaCount = 0;
-            for (const areaLetter of sortedAreas) {
-                areaCount++;
-                const areaData = groupedData[areaLetter];
-                console.log(`--- Processing Area: ${areaLetter} (${areaData.length} entries) ---`);
-                showFeedback(`Generating for Area ${areaLetter} (${areaCount}/${sortedAreas.length})...`, false, 6000);
-
-                let reportData = null, tallyData = null, plotStats = null;
-                try { reportData = calculateForestryReport(areaData, selBaf, selRule, selFc); } catch (e) { console.error(`Report calc error Area ${areaLetter}:`, e); }
-                try { tallyData = generateTallyData(areaData); } catch (e) { console.error(`Tally calc error Area ${areaLetter}:`, e); }
-                try { plotStats = calculatePlotStats(areaData, selBaf, selRule, selFc); } catch (e) { console.error(`Plot stats calc error Area ${areaLetter}:`, e); }
-
-                if (generateGraphsEnabled && reportData && reportData.summary && reportData.summary.numberOfPlots > 0) {
-                    console.log(`>>> Generating graphs for Area ${areaLetter}...`);
-                    const graphFileNameBase = `${projNameBase}_Area${areaLetter}_${timestamp}`;
-                    const graphDelay = 250; // Increased slightly
-
-                    try {
-                        const createChartAndGetDataUrl = async (chartType, generatorFn) => {
-                            const tempCanvas = document.createElement('canvas');
-                            tempCanvas.width = chartWidth;
-                            tempCanvas.height = chartHeight;
-                            // Manual fillRect is removed as plugin handles background
-
-                            const chartInstance = generatorFn(reportData, tempCanvas);
-                            if (!chartInstance) { console.error(`Failed to create ${chartType} chart instance for Area ${areaLetter}.`); return null; }
-                            
-                            await new Promise(resolve => setTimeout(resolve, 250)); // Allow plugin and chart to render
-
-                            try {
-                                return tempCanvas.toDataURL('image/png'); // Output as PNG
-                            } catch (urlError) { console.error(`Error getting data URL for ${chartType} (Area ${areaLetter}):`, urlError); return null; }
-                        };
-
-                        const baDataUrl = await createChartAndGetDataUrl('BA', generateBaChart);
-                        if (baDataUrl) downloadDataUrlAsJpg(baDataUrl, `${graphFileNameBase}_BA_Dist.png`);
-                        await new Promise(r => setTimeout(r, graphDelay));
-
-                        const tpaDataUrl = await createChartAndGetDataUrl('TPA', generateTpaChart);
-                        if (tpaDataUrl) downloadDataUrlAsJpg(tpaDataUrl, `${graphFileNameBase}_TPA_Dist.png`);
-                        await new Promise(r => setTimeout(r, graphDelay));
-
-                        const volSpecDataUrl = await createChartAndGetDataUrl('VolSpecies', generateVolSpeciesChart);
-                        if (volSpecDataUrl) downloadDataUrlAsJpg(volSpecDataUrl, `${graphFileNameBase}_Vol_Species.png`);
-                        await new Promise(r => setTimeout(r, graphDelay));
-
-                        const volSawDataUrl = await createChartAndGetDataUrl('VolSawtimber', generateVolSawtimberChart);
-                        if (volSawDataUrl) downloadDataUrlAsJpg(volSawDataUrl, `${graphFileNameBase}_Vol_Sawtimber.png`);
-                        await new Promise(r => setTimeout(r, graphDelay));
-
-                        console.log(`Graph download process completed for Area ${areaLetter}.`);
-                    } catch (graphError) { console.error(`Graph generation/download error Area ${areaLetter}:`, graphError); showFeedback(`Graph error Area ${areaLetter}.`, true, 4000); }
-                } else if (generateGraphsEnabled) { console.warn(`Graph generation skipped Area ${areaLetter}: No valid report data or zero plots.`); }
-
-                let rawCsv = "PlotNumber,Area,DBH,Species,Logs,Cut,Notes,Latitude,Longitude\n";
-                areaData.forEach(e => { if (!e) return; const n = `"${(e.notes || '').replace(/"/g, '""')}"`; const l = e.location || {}; rawCsv += `${e.plotNumber ?? '?'},${e.areaLetter ?? '?'},${e.dbh ?? '?'},"${e.species ?? 'N/A'}",${e.logs ?? '?'},${e.cutStatus || 'No'},${n},${l.lat || ''},${l.lon || ''}\n`; });
-                let tallyCsv = "\n\n--- TALLY DATA ---\nSpecies,DBH,Logs,Cut Status,Count\n";
-                if (tallyData) { try { Object.keys(tallyData).sort().forEach(sp=>{ Object.keys(tallyData[sp]).sort((a,b)=>Number(a)-Number(b)).forEach(dbh=>{ Object.keys(tallyData[sp][dbh]).sort((a,b)=>{if(a==='Cull')return 1;if(b==='Cull')return -1;const nA=parseFloat(a),nB=parseFloat(b);return isNaN(nA)?1:isNaN(nB)?-1:nA-nB;}).forEach(logs=>{const c=tallyData[sp][dbh][logs];const cut=c['Yes']||0,notCut=c['No']||0;if(cut>0)tallyCsv+=`"${sp}",${dbh},${logs},"Yes",${cut}\n`;if(notCut>0)tallyCsv+=`"${sp}",${dbh},${logs},"No",${notCut}\n`;});});});}catch(e){console.error(`Tally CSV Err Area ${areaLetter}:`,e);tallyCsv+="Error generating tally section.\n";}}else{tallyCsv+="Tally calculation failed.\n";}
-                let plotCsv = `\n\n--- PER-PLOT VOLUME & STATS (Rule:${selRule}${selRule==='Doyle'?' FC'+selFc:''}, BAF:${selBaf}) ---\n`;
-                if(plotStats&&plotStats.numValidPlots>0){plotCsv+=`Plot,Volume (BF/Acre)\n`;const plotsInArea={};areaData.forEach(e=>{if(e?.plotNumber){const pN=parseInt(e.plotNumber,10);if(!isNaN(pN))plotsInArea[pN]=true;}});const plotNsInArea=Object.keys(plotsInArea).map(Number).sort((a,b)=>a-b);const plotVolumeMap={};plotNsInArea.forEach((pN,index)=>{if(plotStats.plotVolumes&&plotStats.plotVolumes[index]!==undefined){plotVolumeMap[pN]=plotStats.plotVolumes[index];}else{console.warn(`Volume mapping issue for plot ${pN} in Area ${areaLetter}.`);plotVolumeMap[pN]=0;}});plotNsInArea.forEach(pN=>{plotCsv+=`${pN},${plotVolumeMap[pN]}\n`;});plotCsv+=`\nNum Plots,${plotStats.numValidPlots}\nMean BF/Acre,${plotStats.meanV.toFixed(1)}\nVariance,${plotStats.numValidPlots>1?(plotStats.stdDevV*plotStats.stdDevV).toFixed(1):'N/A'}\nStd Dev,${plotStats.numValidPlots>1?plotStats.stdDevV.toFixed(1):'N/A'}\nCV (%),${plotStats.numValidPlots>1?plotStats.cvV.toFixed(1):'N/A'}\n`;}else{plotCsv+=`No plot data or insufficient plots for stats.\n`;}
-                let reportCsv = ""; if(reportData){try{reportCsv=formatReportForCsv(reportData);}catch(e){console.error(`Report CSV Format Err Area ${areaLetter}:`,e);reportCsv="\n\n--- FORESTRY REPORT DATA ---\nError formatting report.\n";}}else{reportCsv="\n\n--- FORESTRY REPORT DATA ---\nReport calculation failed.\n";}
-                const combined=rawCsv+tallyCsv+plotCsv+reportCsv;const blob=new Blob([combined],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement("a");const ruleP=selRule.substring(0,4);const fcP=selRule==='Doyle'?`FC${selFc}`:'';const bafP=`BAF${selBaf}`;const fName=`${projNameBase}_Area${areaLetter}_${ruleP}${fcP}_${bafP}_${timestamp}.csv`;link.setAttribute("href",url);link.setAttribute("download",fName);link.style.visibility='hidden';document.body.appendChild(link);link.click();document.body.removeChild(link);URL.revokeObjectURL(url);
-                console.log(`CSV download initiated Area ${areaLetter}: ${fName}`);
+        async function handleTextFile(content, filename) {
+            if (zipMode) {
+                zip.file(filename, content);
+            } else {
+                const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                triggerDownload(url, filename);
+                URL.revokeObjectURL(url);
                 await new Promise(r => setTimeout(r, 250));
             }
-            const graphMsgPart = generateGraphsEnabled?' & Graphs':'';const areaMsgPart = sortedAreas.length > 1?` for Areas: ${sortedAreas.join(', ')}`:(sortedAreas.length===1?` for Area ${sortedAreas[0]}`:'');showFeedback(`CSV${graphMsgPart} Saved${areaMsgPart}`,false,4000);
-        } catch (error) { console.error("Overall CSV/Graph Gen Error:", error); showFeedback(`Save Error: ${error.message || 'Unknown'}.`, true, 6000); }
-    }
+        }
 
-    // --- Event Handlers ---
-    function handleSubmitEntry() {
+        async function handleTxtFile(content, filename) {
+            if (zipMode) {
+                zip.file(filename, content);
+            } else {
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                triggerDownload(url, filename);
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        async function handleChartPng(genFn, reportDataArg, filename) {
+            const c = document.createElement('canvas'); c.width=800; c.height=450;
+            const inst = genFn(reportDataArg, c);
+            if (!inst) return;
+            await new Promise(r => setTimeout(r, 250));
+            try {
+                const dataUrl = c.toDataURL('image/png');
+                if (zipMode) {
+                    zip.file(filename, dataUrl.split(',')[1], { base64: true });
+                } else {
+                    triggerDownload(dataUrl, filename);
+                    await new Promise(r => setTimeout(r, 250));
+                }
+            } catch(e) {}
+            try { inst.destroy(); } catch(e) {}
+        }
+
+        async function handleCanvasPng(canvas, filename) {
+            if (!canvas) return;
+            await new Promise(r => setTimeout(r, 100));
+            try {
+                const dataUrl = canvas.toDataURL('image/png');
+                if (zipMode) {
+                    zip.file(filename, dataUrl.split(',')[1], { base64: true });
+                } else {
+                    triggerDownload(dataUrl, filename);
+                    await new Promise(r => setTimeout(r, 250));
+                }
+            } catch(e) { console.error('Canvas PNG error:', e); }
+        }
+
         try {
-            if (!dbhSelect || !speciesSelect || !logsSelect || !cutCheckbox || !notesTextarea) return;
+            const grouped = collectedData.reduce((acc, e) => {
+                const area = e.areaLetter || 'Unknown';
+                if (!acc[area]) acc[area] = [];
+                acc[area].push(e); return acc;
+            }, {});
+            const sortedAreas = Object.keys(grouped).sort();
+            if (!sortedAreas.length) { showFeedback("No areas found.", true); return; }
+            const ts = new Date().toISOString().slice(0,19).replace(/[-T:]/g,"");
+            const projBase = projectNameInput?.value.trim().replace(/[^a-z0-9_\-]/gi,'_') || 'TimberTally';
+
+            for (const [i, areaLetter] of sortedAreas.entries()) {
+                const areaData = grouped[areaLetter];
+                showFeedback(`Generating Area ${areaLetter} (${i+1}/${sortedAreas.length})...`, false, 6000);
+                let reportData = null, tallyData = null, plotStats = null;
+                try { reportData = calculateForestryReport(areaData, selBaf, selRule, selFc); } catch(e) {}
+                try { tallyData = generateTallyData(areaData); } catch(e) {}
+                try { plotStats = calculatePlotStats(areaData, selBaf, selRule, selFc); } catch(e) {}
+
+                const nameBase = `${projBase}_Area${areaLetter}_${ts}`;
+
+                if (graphsEnabled && reportData?.summary?.numberOfPlots > 0) {
+                    await handleChartPng(generateBaChartExport,          reportData, `${nameBase}_BA_Dist.png`);
+                    await handleChartPng(generateTpaChartExport,         reportData, `${nameBase}_TPA_Dist.png`);
+                    await handleChartPng(generateVolSpeciesChartExport,  reportData, `${nameBase}_Vol_Species.png`);
+                    await handleChartPng(generateVolSawtimberChartExport,reportData, `${nameBase}_Vol_Sawtimber.png`);
+
+                    try {
+                        const allAreaStats = calculateStandStocking(collectedData, selBaf);
+                        if (allAreaStats?.length) {
+                            const gCanvas = document.createElement('canvas');
+                            gCanvas.width = 1200; gCanvas.height = 700;
+                            const gInst = buildStockingChartExport(allAreaStats, gCanvas);
+                            if (gInst) {
+                                await new Promise(r => setTimeout(r, 300));
+                                await handleCanvasPng(gCanvas, `${nameBase}_Gingrich_Stocking.png`);
+                                try { gInst.destroy(); } catch(e) {}
+                            }
+                        }
+                    } catch(e) { console.error('Gingrich export error:', e); }
+
+                    try {
+                        const projName = projectNameInput?.value.trim() || 'Untitled';
+                        const summaryCanvas = buildSummaryReportCanvas(reportData, plotStats, areaLetter, projName, selRule, selFc, selBaf);
+                        await handleCanvasPng(summaryCanvas, `${nameBase}_Summary_Report.png`);
+                    } catch(e) { console.error('Summary report export error:', e); }
+                }
+
+                // Build CSV
+                let raw = "PlotNumber,Area,DBH,Species,Logs,Cut,UGS,Notes,Latitude,Longitude\n";
+                areaData.forEach(e => {
+                    if (!e) return;
+                    if (e.emptyPlot) {
+                        const loc = e.location || {};
+                        raw += `${e.plotNumber},${e.areaLetter},0,"EMPTY PLOT",0,No,No,"No tally trees",${loc.lat||''},${loc.lon||''}\n`;
+                        return;
+                    }
+                    const notes = `"${(e.notes||'').replace(/"/g,'""')}"`;
+                    const loc = e.location || {};
+                    raw += `${e.plotNumber??'?'},${e.areaLetter??'?'},${e.dbh??'?'},"${e.species??'N/A'}",${e.logs??'?'},${e.cutStatus||'No'},${e.ugsStatus||'No'},${notes},${loc.lat||''},${loc.lon||''}\n`;
+                });
+
+                let tallyCsv = "\n\n--- TALLY DATA ---\nSpecies,DBH,Logs,Cut Status,Count\n";
+                if (tallyData) {
+                    Object.keys(tallyData).sort().forEach(sp => {
+                        Object.keys(tallyData[sp]).sort((a,b)=>Number(a)-Number(b)).forEach(dbh => {
+                            Object.keys(tallyData[sp][dbh]).sort((a,b)=>{if(a==='Cull')return 1;if(b==='Cull')return -1;return (parseFloat(a)||0)-(parseFloat(b)||0);}).forEach(logs => {
+                                const c = tallyData[sp][dbh][logs];
+                                if (c['Yes']>0) tallyCsv+=`"${sp}",${dbh},${logs},"Yes",${c['Yes']}\n`;
+                                if (c['No']>0)  tallyCsv+=`"${sp}",${dbh},${logs},"No",${c['No']}\n`;
+                            });
+                        });
+                    });
+                }
+
+                let plotCsv = `\n\n--- PER-PLOT VOLUME & STATS (Rule:${selRule}${selRule==='Doyle'?' FC'+selFc:''}, BAF:${selBaf}) ---\n`;
+                if (plotStats?.numValidPlots > 0) {
+                    plotCsv += "Plot,Volume (BF/Acre)\n";
+                    const plotsInArea = {};
+                    areaData.forEach(e => { if (e?.plotNumber) { const n=parseInt(e.plotNumber,10); if (!isNaN(n)) plotsInArea[n]=true; } });
+                    const plotNsInArea = Object.keys(plotsInArea).map(Number).sort((a,b)=>a-b);
+                    plotNsInArea.forEach((pn,idx) => { plotCsv += `${pn},${plotStats.plotVolumes?.[idx]??0}\n`; });
+                    plotCsv += `\nNum Plots,${plotStats.numValidPlots}\nMean BF/Acre,${plotStats.meanV.toFixed(1)}\n`;
+                    if (plotStats.numValidPlots > 1) {
+                        plotCsv += `Variance,${(plotStats.stdDevV*plotStats.stdDevV).toFixed(1)}\nStd Dev,${plotStats.stdDevV.toFixed(1)}\nCV (%),${plotStats.cvV.toFixed(1)}\n`;
+                    }
+                } else plotCsv += "No plot data.\n";
+
+                const reportCsv = reportData ? (() => { try { return formatReportForCsv(reportData); } catch(e) { return "\n--- FORESTRY REPORT DATA ---\nError formatting report.\n"; } })() : "\n--- FORESTRY REPORT DATA ---\nReport failed.\n";
+
+                const ruleP = selRule.substring(0,4);
+                const fcP = selRule==='Doyle' ? `FC${selFc}` : '';
+                const csvFilename = `${projBase}_Area${areaLetter}_${ruleP}${fcP}_BAF${selBaf}_${ts}.csv`;
+                await handleTextFile(raw + tallyCsv + plotCsv + reportCsv, csvFilename);
+            }
+
+            // Stand notes
+            const notesText = getStandNotesText();
+            if (notesText) {
+                const header = `TimberTally Stand Notes\nProject: ${projectNameInput?.value.trim() || 'Untitled'}\nExported: ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
+                await handleTxtFile(header + notesText, `${projBase}_StandNotes_${ts}.txt`);
+            }
+
+            if (zipMode) {
+                showFeedback("Compressing ZIP...", false, 8000);
+                const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+                const zipUrl = URL.createObjectURL(zipBlob);
+                triggerDownload(zipUrl, `${projBase}_${ts}.zip`);
+                URL.revokeObjectURL(zipUrl);
+                showFeedback(`ZIP saved: ${projBase}_${ts}.zip`, false, 4000);
+            } else {
+                const graphMsg = graphsEnabled ? ' & Graphs' : '';
+                showFeedback(`CSV${graphMsg} saved for Area${sortedAreas.length>1?'s':''}: ${sortedAreas.join(', ')}`, false, 4000);
+            }
+        } catch(err) {
+            console.error('Export error:', err);
+            showFeedback(`Save Error: ${err.message||'Unknown'}`, true, 6000);
+        }
+    }
+    // ============================================================
+    // EVENT HANDLERS
+    // ============================================================
+    // Entries that stand for a plot with no tally trees (Record empty plot). They count
+    // toward the number of plots (so per-acre values stay right) but hold no tree.
+    const isEmptyPlot = e => !!e?.emptyPlot;
+    const escHtml = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const plotEntries = (letter, plot) => collectedData.filter(e => e.areaLetter === letter && e.plotNumber === plot);
+
+    let submitBusy = false;
+    function handleSubmitEntry() {
+        // A second (gloved double) tap within half a second doesn't save the tree twice.
+        if (submitBusy) return;
+        submitBusy = true;
+        setTimeout(() => { submitBusy = false; }, 500);
+        try {
+            if (!dbhSelect || !speciesSelect || !logsSelect || !cutCheckbox) return;
             checkAndSetLogsForDbh();
             const currentLetter = areaLetters[currentAreaIndex];
-            const newEntry = { id: Date.now(), plotNumber: currentPlotNumber, areaLetter: currentLetter, dbh: dbhSelect.value, species: speciesSelect.value, logs: logsSelect.value, cutStatus: cutCheckbox.checked ? 'Yes' : 'No', notes: notesTextarea.value.trim(), location: currentLocation };
-            if (!newEntry.species || !newEntry.dbh || !newEntry.logs) { showFeedback("Species, DBH, and Logs required.", true); return; }
-            collectedData.push(newEntry); renderEntries(); saveSessionData(); showFeedback("Entry Added!");
-            cutCheckbox.checked = false; notesTextarea.value = ''; currentLocation = null;
-            if(locationStatus) { locationStatus.textContent = 'Location not set'; locationStatus.style.color = '#555'; }
-         } catch (error) { console.error("Submit Error:", error); showFeedback(`Submit Error: ${error.message}`, true, 5000); }
+            const newEntry = {
+                id: Date.now(),
+                plotNumber: currentPlotNumber, areaLetter: currentLetter,
+                dbh: dbhSelect.value, species: speciesSelect.value,
+                logs: logsSelect.value,
+                cutStatus: cutCheckbox.checked ? 'Yes' : 'No',
+                ugsStatus: ugsCheckbox?.checked ? 'Yes' : 'No',
+                notes: notesTextarea?.value.trim() || '',
+                location: currentLocation
+            };
+            if (!newEntry.species) { showFeedback("Pick a species first.", true); return; }
+            if (!newEntry.dbh || !newEntry.logs) {
+                showFeedback("Species, DBH, and Logs are required.", true); return;
+            }
+            // A tree in a plot recorded as empty: the plot isn't empty any more.
+            collectedData = collectedData.filter(e => !(isEmptyPlot(e) && e.areaLetter === currentLetter && e.plotNumber === currentPlotNumber));
+            collectedData.push(newEntry);
+            renderEntries();
+            saveSessionData();
+            showFeedback(`✓ Entry recorded — ${newEntry.species} ${newEntry.dbh}" · Plot ${currentPlotNumber}, Area ${currentLetter}`);
+            navigator.vibrate?.(50);
+            if (cutCheckbox) { cutCheckbox.checked = false; cutChip?.classList.remove('on'); }
+            if (ugsCheckbox) { ugsCheckbox.checked = false; ugsChip?.classList.remove('on'); }
+            if (notesTextarea) notesTextarea.value = '';
+            setNotesOpen(false);
+            const usedManualFix = !!currentLocation;
+            currentLocation = null;
+            if (usedManualFix && locationStatus) { locationStatus.textContent = ''; locationStatus.classList.remove('gps-weak'); }
+            maybeAutoGps(newEntry);
+        } catch(e) {
+            console.error('Submit error:', e);
+            showFeedback(`Submit Error: ${e.message}`, true, 5000);
+        }
     }
-    function handleGetLocation() { if (!locationStatus) return; if (!('geolocation' in navigator)) { locationStatus.textContent = 'Not Supported'; locationStatus.style.color = 'red'; return; } locationStatus.textContent = 'Fetching...'; locationStatus.style.color = '#555'; getLocationBtn.disabled = true; navigator.geolocation.getCurrentPosition( (pos) => { currentLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }; const coords = `(${currentLocation.lat.toFixed(4)}, ${currentLocation.lon.toFixed(4)})`; locationStatus.textContent = `Set ${coords}`; locationStatus.style.color = 'green'; getLocationBtn.disabled = false; }, (err) => { currentLocation = null; let msg = 'Error: '; switch (err.code) { case 1: msg+='Denied'; break; case 2: msg+='Unavailable'; break; case 3: msg+='Timeout'; break; default: msg+='Unknown'; break; } locationStatus.textContent = msg; locationStatus.style.color = 'red'; getLocationBtn.disabled = false; console.error("Geolocation Error:", err); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } ); }
-    function handleDeleteSelected() { if(!entriesTableBody) return; const checks = entriesTableBody.querySelectorAll('input[type="checkbox"]:checked'); if (checks.length === 0) { showFeedback("No entries selected.", true); return; } const idsToDelete = new Set(Array.from(checks).map(cb => { const idAttr = cb.getAttribute('data-id'); return idAttr ? parseInt(idAttr, 10) : NaN; }).filter(id => !isNaN(id))); if (idsToDelete.size === 0) { showFeedback("Cannot identify selected entries.", true); return; } const num = idsToDelete.size; const word = num === 1 ? 'entry' : 'entries'; if (!confirm(`Delete ${num} selected ${word}?`)) return; collectedData = collectedData.filter(entry => !(entry && entry.id && idsToDelete.has(entry.id))); renderEntries(); saveSessionData(); showFeedback(`${num} ${word} deleted.`); }
-    function handleDeleteAll() { if (collectedData.length === 0) { showFeedback("No data to delete.", true); return; } if (!confirm('WARNING: Delete ALL collected data? This cannot be undone.')) return; collectedData = []; try { localStorage.removeItem(STORAGE_KEY); } catch (e) { console.error('Clear Storage Err:', e); } currentAreaIndex = 0; currentPlotNumber = 1; renderEntries(); showFeedback('All data deleted.'); currentLocation = null; if(locationStatus)locationStatus.textContent = 'Location not set'; if(projectNameInput)projectNameInput.value = ''; }
-    function handleViewTally() { try { const tallyData = generateTallyData(collectedData); displayTallyResults(tallyData); if(entryView) entryView.style.display = 'none'; if(tallyView) tallyView.style.display = 'block'; } catch(error) { console.error("View Tally Err:", error); showFeedback(`Tally Error: ${error.message}`, true); if(tallyResultsContainer) tallyResultsContainer.innerHTML = `<p class="no-tally-data" style="color: red;">Tally Error</p>`; if(entryView) entryView.style.display = 'none'; if(tallyView) tallyView.style.display = 'block'; } }
-    function handleBackToEntry() { if(tallyView) tallyView.style.display = 'none'; if(entryView) entryView.style.display = 'block'; }
 
-    // --- Event Listeners ---
-    if(submitBtn) submitBtn.addEventListener('click', handleSubmitEntry);
-    if(getLocationBtn) getLocationBtn.addEventListener('click', handleGetLocation);
-    if(saveCsvBtn) saveCsvBtn.addEventListener('click', generateAndDownloadCsv);
-    if(deleteBtn) deleteBtn.addEventListener('click', handleDeleteSelected);
-    if(deleteAllBtn) deleteAllBtn.addEventListener('click', handleDeleteAll);
-    if(entriesTableBody) entriesTableBody.addEventListener('change', (event) => { if (event.target.type === 'checkbox' && deleteBtn) { deleteBtn.disabled = !isAnyCheckboxChecked(); } });
-    if(dbhSelect) dbhSelect.addEventListener('change', checkAndSetLogsForDbh);
-    if(viewTallyBtn) viewTallyBtn.addEventListener('click', handleViewTally);
-    if(backToEntryBtn) backToEntryBtn.addEventListener('click', handleBackToEntry);
-    if(plotDecrementBtn) plotDecrementBtn.addEventListener('click', () => { if (currentPlotNumber > MIN_PLOT_NUMBER) { currentPlotNumber--; updatePlotDisplay(); saveSessionData(); } }); // Added saveSessionData
-    if(plotIncrementBtn) plotIncrementBtn.addEventListener('click', () => { if (currentPlotNumber < MAX_PLOT_NUMBER) { currentPlotNumber++; updatePlotDisplay(); saveSessionData(); } }); // Added saveSessionData
-    if(areaDecrementBtn) areaDecrementBtn.addEventListener('click', () => { if (currentAreaIndex > 0) { currentAreaIndex--; updateAreaDisplay(); calculateAndDisplayNeededPlots(); saveSessionData(); } }); // Added saveSessionData
-    if(areaIncrementBtn) areaIncrementBtn.addEventListener('click', () => { if (currentAreaIndex < areaLetters.length - 1) { currentAreaIndex++; updateAreaDisplay(); calculateAndDisplayNeededPlots(); saveSessionData(); } }); // Added saveSessionData
-    if (toggleSettingsBtn) toggleSettingsBtn.addEventListener('click', () => { if(!settingsSection) return; const isHidden = settingsSection.hidden; settingsSection.hidden = !isHidden; toggleSettingsBtn.setAttribute('aria-expanded', String(isHidden)); toggleSettingsBtn.innerHTML = isHidden ? 'Hide Settings ▲' : 'Settings ⚙'; toggleSettingsBtn.title = isHidden ? 'Hide Settings' : 'Show Settings'; });
-    if (bafSelect) bafSelect.addEventListener('change', (e) => { currentBaf = parseInt(e.target.value, 10); saveSettings(); showSettingsFeedback(`BAF set to ${currentBaf}`, false); calculateAndDisplayNeededPlots(); });
-    if (logRuleSelect) logRuleSelect.addEventListener('change', (e) => { currentLogRule = e.target.value; saveSettings(); showSettingsFeedback(`Rule: ${currentLogRule}`, false); checkAndSetLogsForDbh(); calculateAndDisplayNeededPlots(); updateFormClassVisibility(); }); // Moved updateFormClassVisibility here
-    if (formClassSelect) formClassSelect.addEventListener('change', (e) => { currentFormClass = parseInt(e.target.value, 10); saveSettings(); showSettingsFeedback(`Doyle FC: ${currentFormClass}`, false); calculateAndDisplayNeededPlots(); });
-    // Removed redundant logRuleSelect listener block as it's combined above
-    if (generateGraphsSelect) { generateGraphsSelect.addEventListener('change', (e) => { currentGenerateGraphs = e.target.value; saveSettings(); showSettingsFeedback(`Generate graphs set to ${currentGenerateGraphs}.`, false); if (saveCsvBtn) { saveCsvBtn.textContent = currentGenerateGraphs === 'Yes' ? 'Save Area CSV(s) & Graphs' : 'Save Area CSV(s)'; } }); if (saveCsvBtn) { saveCsvBtn.textContent = currentGenerateGraphs === 'Yes' ? 'Save Area CSV(s) & Graphs' : 'Save Area CSV(s)'; } }
-    if (manualUpdateCheckBtn && updateCheckStatus && 'serviceWorker' in navigator) { manualUpdateCheckBtn.addEventListener('click', () => { if (updateStatusTimeout) clearTimeout(updateStatusTimeout); updateCheckStatus.textContent = 'Checking...'; manualUpdateCheckBtn.disabled = true; navigator.serviceWorker.ready.then(registration => registration.update()).then(reg => { if (!reg) { updateCheckStatus.textContent = 'Check failed (No SW?).'; updateStatusTimeout = setTimeout(() => { if(updateCheckStatus) updateCheckStatus.textContent = ''; }, 3000); return; } if (reg.installing) { updateCheckStatus.textContent = 'Update found, installing...'; console.log('[App] Update found via manual check (installing).'); } else if (reg.waiting) { updateCheckStatus.textContent = 'Update ready!'; console.log('[App] Update found via manual check (waiting).'); if (typeof newWorker === 'undefined' || !newWorker) { newWorker = reg.waiting; } if (typeof showUpdateBar === 'function') { showUpdateBar(); } else { console.error("showUpdateBar function not found"); } } else { updateCheckStatus.textContent = 'App is up-to-date.'; console.log('[App] No update found via manual check.'); updateStatusTimeout = setTimeout(() => { if(updateCheckStatus) updateCheckStatus.textContent = ''; }, 3000); } }).catch(err => { console.error('[App] Manual update check failed:', err); if(updateCheckStatus) updateCheckStatus.textContent = 'Check failed.'; updateStatusTimeout = setTimeout(() => { if(updateCheckStatus) updateCheckStatus.textContent = ''; }, 3000); }).finally(() => { if(manualUpdateCheckBtn) manualUpdateCheckBtn.disabled = false; }); }); } else if (!('serviceWorker' in navigator)) { if(manualUpdateCheckBtn) manualUpdateCheckBtn.disabled = true; if(updateCheckStatus) updateCheckStatus.textContent = 'Updates N/A'; }
-    if (showPrivacyPolicyBtn) { showPrivacyPolicyBtn.addEventListener('click', () => { window.open(PRIVACY_POLICY_URL, '_blank', 'noopener,noreferrer'); }); } else { console.warn("Privacy Policy button element not found."); }
-	if (showReadmeBtn) { showReadmeBtn.addEventListener('click', () => { window.open(README_URL, '_blank', 'noopener,noreferrer'); }); } else { console.warn("Show README button element not found."); }
-    if(toggleSpeciesMgmtBtn) toggleSpeciesMgmtBtn.addEventListener('click', () => { if(!speciesManagementSection) return; const isHidden = speciesManagementSection.hidden; speciesManagementSection.hidden = !isHidden; toggleSpeciesMgmtBtn.setAttribute('aria-expanded', String(isHidden)); toggleSpeciesMgmtBtn.innerHTML = isHidden ? 'Hide Species Mgt ▲' : 'Show Species Mgt ▼'; });
-    if(addSpeciesBtn) addSpeciesBtn.addEventListener('click', () => { if(!newSpeciesInput) return; const news = newSpeciesInput.value.trim(); if (!news) { showSpeciesFeedback("Enter species name.", true); return; } if (currentSpeciesList.some(s => s.toLowerCase() === news.toLowerCase())) { showSpeciesFeedback(`"${news}" already exists.`, true); return; } currentSpeciesList.push(news); populateSpeciesDropdowns(); saveSpeciesList(); newSpeciesInput.value = ''; showSpeciesFeedback(`"${news}" added.`); });
-    if(removeSpeciesBtn) removeSpeciesBtn.addEventListener('click', () => { if(!removeSpeciesSelect) return; const opts = Array.from(removeSpeciesSelect.selectedOptions); if (opts.length === 0) { showSpeciesFeedback("Select species to remove.", true); return; } const toRemove = opts.map(o => o.value); if (!confirm(`Remove selected species: ${toRemove.join(', ')}?`)) return; currentSpeciesList = currentSpeciesList.filter(s => !toRemove.includes(s)); populateSpeciesDropdowns(); saveSpeciesList(); showSpeciesFeedback(`Removed: ${toRemove.join(', ')}.`); });
-    if(toggleProjectMgmtBtn) toggleProjectMgmtBtn.addEventListener('click', () => { if(!projectManagementSection) return; const isHidden = projectManagementSection.hidden; projectManagementSection.hidden = !isHidden; toggleProjectMgmtBtn.setAttribute('aria-expanded', String(isHidden)); toggleProjectMgmtBtn.innerHTML = isHidden ? 'Hide Project Mgt ▲' : 'Show Project Mgt ▼'; });
-    if(saveProjectBtn) saveProjectBtn.addEventListener('click', () => { if(!projectNameInput) return; const name = projectNameInput.value.trim(); if (!name) { showProjectFeedback("Enter project name.", true); return; } if (savedProjects[name] && !confirm(`Overwrite project "${name}"?`)) return; try { savedProjects[name] = JSON.parse(JSON.stringify(collectedData)); saveProjectsToStorage(); populateLoadProjectDropdown(); showProjectFeedback(`Project "${name}" saved.`); } catch (e) { showProjectFeedback(`Save Error: ${e.message}`, true); } });
-    if(loadProjectBtn) loadProjectBtn.addEventListener('click', () => { if(!loadProjectSelect) return; const name = loadProjectSelect.value; if (!name) { showProjectFeedback("Select project.", true); return; } if (!savedProjects[name]) { showProjectFeedback(`Project "${name}" not found.`, true); return; } if (collectedData.length > 0 && !confirm(`Load project "${name}"? This will REPLACE your current unsaved data.`)) return; try { collectedData = JSON.parse(JSON.stringify(savedProjects[name])); if(projectNameInput) projectNameInput.value = name; renderEntries(); saveSessionData(); showProjectFeedback(`Project "${name}" loaded.`); currentLocation = null; if(locationStatus)locationStatus.textContent = 'Location not set'; } catch (e) { showProjectFeedback(`Load Error: ${e.message}`, true); collectedData = []; renderEntries(); saveSessionData(); } });
-    if(deleteProjectBtn) deleteProjectBtn.addEventListener('click', () => { if(!loadProjectSelect) return; const name = loadProjectSelect.value; if (!name) { showProjectFeedback("Select project.", true); return; } if (!savedProjects[name]) { showProjectFeedback(`Project "${name}" not found.`, true); return; } if (!confirm(`Delete saved project "${name}"? This cannot be undone.`)) return; delete savedProjects[name]; saveProjectsToStorage(); populateLoadProjectDropdown(); if (projectNameInput && projectNameInput.value === name) projectNameInput.value = ''; showProjectFeedback(`Project "${name}" deleted.`); });
-    if(loadCsvBtn) loadCsvBtn.addEventListener('click', () => { if(!csvFileInput) return; const file = csvFileInput.files[0]; if (!file) { showProjectFeedback("Select CSV file.", true); return; } if (!file.name.toLowerCase().endsWith('.csv')) { showProjectFeedback("Must be .csv file.", true); csvFileInput.value = null; return; } const reader = new FileReader(); reader.onload = (e) => { try { const content = e.target.result; const parsedData = parseCsvAndLoadData(content); if (parsedData.length === 0) { showProjectFeedback("CSV parsed, but no valid data entries found.", true); csvFileInput.value = null; return; } let chosenArea = null; let promptCancelled = false; const initialPromptMessage = `Enter Area Letter (A-Z) to assign to all ${parsedData.length} loaded entries from "${file.name}".\n\nWARNING: If you choose an area already containing data, this new data will be ADDED to it and plots may be renumbered.`; do { chosenArea = prompt(initialPromptMessage, areaLetters[currentAreaIndex]); if (chosenArea === null) { promptCancelled = true; break; } chosenArea = chosenArea.trim().toUpperCase(); if (chosenArea.length === 1 && areaLetters.includes(chosenArea)) { break; } else { alert("Invalid input. Please enter a single letter from A to Z."); } } while (true); if (promptCancelled) { showProjectFeedback("CSV load cancelled.", false); csvFileInput.value = null; return; } let plotRenumberingApplied = false; let maxExistingPlotNumber = 0; const existingDataInArea = collectedData.filter(entry => entry.areaLetter === chosenArea); if (existingDataInArea.length > 0) { existingDataInArea.forEach(entry => { const plotNum = parseInt(entry.plotNumber, 10); if (!isNaN(plotNum) && plotNum > maxExistingPlotNumber) { maxExistingPlotNumber = plotNum; } }); } console.log(`Max existing plot number in Area ${chosenArea}: ${maxExistingPlotNumber}`); if (maxExistingPlotNumber > 0) { plotRenumberingApplied = true; const plotMap = {}; let nextNewPlotNumber = maxExistingPlotNumber + 1; const originalPlotNumbers = [...new Set(parsedData.map(entry => parseInt(entry.plotNumber, 10)))].filter(num => !isNaN(num)).sort((a, b) => a - b); originalPlotNumbers.forEach(originalPlot => { if (plotMap[originalPlot] === undefined) { if (nextNewPlotNumber <= MAX_PLOT_NUMBER) { plotMap[originalPlot] = nextNewPlotNumber++; } else { console.warn(`Exceeded MAX_PLOT_NUMBER (${MAX_PLOT_NUMBER}) during renumbering. Plot ${originalPlot} mapped to ${MAX_PLOT_NUMBER}`); plotMap[originalPlot] = MAX_PLOT_NUMBER; } } }); console.log("Plot renumbering map:", plotMap); parsedData.forEach(entry => { const originalPlot = parseInt(entry.plotNumber, 10); if (!isNaN(originalPlot) && plotMap[originalPlot] !== undefined) { entry.plotNumber = plotMap[originalPlot]; } entry.areaLetter = chosenArea; }); } else { parsedData.forEach(entry => { entry.areaLetter = chosenArea; }); } collectedData = collectedData.concat(parsedData); renderEntries(); saveSessionData(); let feedbackText = `Added ${parsedData.length} entries from "${file.name}" to Area ${chosenArea}.`; if (plotRenumberingApplied) { feedbackText += " Plots were automatically renumbered."; console.log("CSV Load: Plots renumbered starting after plot " + maxExistingPlotNumber); } else { console.log("CSV Load: Plots not renumbered (no existing data in area)."); } showProjectFeedback(feedbackText, false, 4000); currentLocation = null; if(locationStatus)locationStatus.textContent = 'Location not set'; csvFileInput.value = null; } catch (err) { showProjectFeedback(`CSV Load Error: ${err.message}`, true, 5000); csvFileInput.value = null; } }; reader.onerror = () => { showProjectFeedback("File read error.", true); csvFileInput.value = null; }; reader.readAsText(file); });
-    // --- Compass Listeners ---
-    let orientationHandler = null; const handleOrientationEvent = (event) => { let h=null, s='---'; try { if(event.absolute===true && event.alpha!==null){h=360-event.alpha;s='True (abs)';} else if(event.webkitCompassHeading!==undefined && event.webkitCompassHeading!==null){h=event.webkitCompassHeading;s='Mag (webkit)';} else if(event.alpha!==null){h=360-event.alpha;s='Mag (alpha)';} if(h!==null){h=(h+360)%360; if(compassNeedle)compassNeedle.style.transform=`translateX(-50%) rotate(${h}deg)`; if(compassHeading)compassHeading.textContent=`${h.toFixed(0)}°`; if(compassSource)compassSource.textContent=` (${s})`;} else {if(compassHeading)compassHeading.textContent=`---°`; if(compassSource)compassSource.textContent=` (No reading)`;}} catch (e) { console.error("Orientation handling error:", e); if(compassHeading)compassHeading.textContent=`ERR`; if(compassSource)compassSource.textContent=` (Error)`;}};
-    if(showCompassBtn){showCompassBtn.addEventListener('click',()=>{ try{if(typeof DeviceOrientationEvent!=='undefined'){if(typeof DeviceOrientationEvent.requestPermission==='function'){DeviceOrientationEvent.requestPermission().then(p=>{if(p==='granted'){startCompass();}else{alert("Permission required for compass.");}}).catch(e=>{alert("Permission error: "+e.message);});}else{startCompass();}}else{alert("Compass features not supported by this browser.");}}catch(e){alert("Error accessing compass: "+e.message);}}); } else { console.error("showCompassBtn not found"); }
-    function startCompass() { if(!compassContainer||!compassNeedle||!compassHeading||!compassSource){alert("Compass UI elements missing.");return;} compassContainer.style.display='flex';compassHeading.textContent=`---°`;compassSource.textContent=` (Initializing...)`; orientationHandler=handleOrientationEvent; if('ondeviceorientationabsolute' in window){console.log("Using deviceorientationabsolute");window.addEventListener('deviceorientationabsolute',orientationHandler,true);}else if('ondeviceorientation' in window){console.log("Using deviceorientation");window.addEventListener('deviceorientation',orientationHandler,true);}else{alert("Device orientation events are not supported.");compassHeading.textContent=`N/A`;compassSource.textContent=` (Unsupported)`;}}
-    if(closeCompassBtn){closeCompassBtn.addEventListener('click',()=>{ if(!compassContainer) return; compassContainer.style.display='none'; if(orientationHandler){console.log("Removing orientation listener.");if('ondeviceorientationabsolute' in window)window.removeEventListener('deviceorientationabsolute',orientationHandler,true); if('ondeviceorientation' in window)window.removeEventListener('deviceorientation',orientationHandler,true); orientationHandler=null;}}); } else { console.error("closeCompassBtn not found"); }
+    function handleRecordEmptyPlot() {
+        const letter = areaLetters[currentAreaIndex];
+        if (plotEntries(letter, currentPlotNumber).length) { showFeedback(`Plot ${currentPlotNumber} already has entries.`, true); return; }
+        collectedData.push({
+            id: Date.now(), emptyPlot: true,
+            plotNumber: currentPlotNumber, areaLetter: letter,
+            species: '', dbh: '', logs: '', cutStatus: 'No', ugsStatus: 'No',
+            notes: '', location: currentLocation
+        });
+        currentLocation = null;
+        if (locationStatus) { locationStatus.textContent = ''; locationStatus.classList.remove('gps-weak'); }
+        renderEntries();
+        saveSessionData();
+        showFeedback(`✓ Plot ${currentPlotNumber} recorded with no tally trees`);
+    }
 
-    // --- Tree Key Modal Listeners ---
-    if (showTreeKeyBtn && treeKeyModal) { showTreeKeyBtn.addEventListener('click', () => { treeKeyModal.style.display = 'flex'; }); } else { console.warn("Tree Key Button or Modal not found"); }
-    const closeKeyModal = () => { if (treeKeyModal) { treeKeyModal.style.display = 'none'; } };
-    if (closeTreeKeyBtn) { closeTreeKeyBtn.addEventListener('click', closeKeyModal); }
-    if (closeTreeKeyBtnBottom) { closeTreeKeyBtnBottom.addEventListener('click', closeKeyModal); }
-    if (treeKeyModal) { treeKeyModal.addEventListener('click', (event) => { if (event.target === treeKeyModal) { closeKeyModal(); } }); }
+    /** "No trees in plot N? Record empty plot" under Submit while the plot has no entries. */
+    function updateEmptyPlotLine() {
+        const el = document.getElementById('emptyPlotLine');
+        if (!el) return;
+        const list = plotEntries(areaLetters[currentAreaIndex], currentPlotNumber);
+        if (list.some(isEmptyPlot)) el.textContent = `Plot ${currentPlotNumber} is recorded with no tally trees.`;
+        else if (!list.length) el.innerHTML = `<button type="button" class="link-btn" id="recordEmptyPlotBtn" title="Counts this plot in the per-acre averages even though no trees were tallied">No trees in plot ${currentPlotNumber}? Record empty plot</button>`;
+        else el.textContent = '';
+    }
 
-    function initializeApp() {
-        console.log("Initializing TimberTally application...");
+    // ============================================================
+    // GPS (averaged fix, ported from ForestScribe)
+    // ============================================================
+    /** Accuracy worse than this (m) is flagged as weak. */
+    const WEAK_GPS_M = 15;
+    let locationWorked = false;
+    let gpsBusy = false;
+
+    /** Location already approved, so a fix can be taken without a permission prompt popping up mid-plot. */
+    async function locationApproved() {
+        if (!navigator.geolocation) return false;
         try {
-            const updateNotificationElement = document.getElementById('updateNotification');
-            if (updateNotificationElement) updateNotificationElement.style.display = 'none';
+            const status = await navigator.permissions?.query({ name: 'geolocation' });
+            if (status?.state === 'granted') return true;
+            if (status?.state === 'denied') return false;
+        } catch (e) { /* Permissions API not available (older iPhones) */ }
+        return locationWorked;
+    }
+
+    /** Watches the position for a few seconds and averages the good readings (weighted by accuracy). */
+    function getAveragedFix(onProgress, maxMs = 12000, goodAcc = 8) {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) return reject(new Error('GPS not available on this device'));
+            const readings = [];
+            let done = false, id = null, timer = null;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                navigator.geolocation.clearWatch(id);
+                clearTimeout(timer);
+                if (!readings.length) return reject(new Error('No GPS signal — try again in a more open spot'));
+                const best = Math.min(...readings.map(r => r.accuracy));
+                const use = readings.filter(r => r.accuracy <= Math.max(best * 2, best + 5));
+                let w = 0, lat = 0, lon = 0;
+                for (const r of use) {
+                    const k = 1 / Math.max(1, r.accuracy) ** 2;
+                    w += k; lat += r.latitude * k; lon += r.longitude * k;
+                }
+                resolve({ lat: lat / w, lon: lon / w, acc: Math.round(best), n: use.length });
+            };
+            id = navigator.geolocation.watchPosition(
+                pos => {
+                    locationWorked = true;
+                    readings.push(pos.coords);
+                    const best = Math.min(...readings.map(r => r.accuracy));
+                    onProgress?.(Math.round(best), readings.length);
+                    if (readings.filter(r => r.accuracy <= goodAcc).length >= 3) finish();
+                },
+                err => {
+                    if (readings.length) return finish();
+                    done = true;
+                    navigator.geolocation.clearWatch(id);
+                    clearTimeout(timer);
+                    reject(new Error(err.code === 1 ? 'Location permission is off for TimberTally' : (err.message || 'GPS error')));
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: maxMs }
+            );
+            timer = setTimeout(finish, maxMs);
+        });
+    }
+
+    function setGpsStatus(text, weak = false) {
+        if (!locationStatus) return;
+        locationStatus.textContent = text;
+        locationStatus.classList.toggle('gps-weak', weak);
+    }
+
+    /** GPS button: an averaged fix held for the next tree. */
+    async function handleGetLocation() {
+        if (gpsBusy) return;
+        gpsBusy = true;
+        if (getLocationBtn) getLocationBtn.disabled = true;
+        setGpsStatus('GPS: averaging…');
+        try {
+            const g = await getAveragedFix((best, n) => setGpsStatus(`Averaging… ±${best} m (${n})`));
+            currentLocation = { lat: g.lat, lon: g.lon, acc: g.acc };
+            const weak = g.acc > WEAK_GPS_M;
+            setGpsStatus(`${g.lat.toFixed(5)}, ${g.lon.toFixed(5)} ±${g.acc} m${weak ? ' — weak, try a more open spot' : ''} · saved with the next tree`, weak);
+        } catch (e) {
+            currentLocation = null;
+            setGpsStatus(`GPS: ${e.message}`, true);
+        } finally {
+            gpsBusy = false;
+            if (getLocationBtn) getLocationBtn.disabled = false;
+        }
+    }
+
+    /**
+     * Auto GPS: on a plot's 3rd tree, locate the plot if location access is already
+     * approved and no entry in the plot has a location yet. The fix goes on that tree.
+     */
+    async function maybeAutoGps(entry) {
+        const trees = plotEntries(entry.areaLetter, entry.plotNumber).filter(e => !isEmptyPlot(e));
+        if (trees.length !== 3 || trees.some(e => e.location) || gpsBusy) return;
+        if (!(await locationApproved())) return;
+        gpsBusy = true;
+        const label = `Plot ${entry.plotNumber}`;
+        setGpsStatus(`${label} GPS: averaging…`);
+        try {
+            const g = await getAveragedFix((best, n) => setGpsStatus(`${label} averaging… ±${best} m (${n})`));
+            const target = collectedData.find(e => e.id === entry.id);
+            if (target && !target.location) {
+                target.location = { lat: g.lat, lon: g.lon, acc: g.acc };
+                saveSessionData();
+            }
+            const weak = g.acc > WEAK_GPS_M;
+            setGpsStatus(`${label}: ${g.lat.toFixed(5)}, ${g.lon.toFixed(5)} ±${g.acc} m${weak ? ' — weak' : ''}`, weak);
+            setTimeout(() => { if (locationStatus?.textContent.startsWith(label + ':') && !currentLocation) setGpsStatus(''); }, 6000);
+        } catch (e) {
+            setGpsStatus('');
+        } finally {
+            gpsBusy = false;
+        }
+    }
+
+    // ============================================================
+    // EDIT ENTRY (tap a row in Recent Entries)
+    // ============================================================
+    let editingId = null;
+    const editModal = document.getElementById('editEntryModal');
+    const $id = id => document.getElementById(id);
+
+    function fillSelect(sel, values, current) {
+        const list = values.includes(current) || current === '' || current == null ? values : [current, ...values];
+        sel.innerHTML = list.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+        sel.value = current ?? '';
+    }
+    /** Logs choices for a DBH; `keepLegacy` keeps an older entry's value (e.g. 0 logs on a 14") when the box opens. */
+    function editLogsFor(dbh, current, keepLegacy = false) {
+        const vals = logsWheelValues(dbh).map(v => v.value);
+        const next = vals.includes(current) ? current : keepLegacy && current ? current : (vals.length > 1 ? vals[1] : vals[0]);
+        fillSelect($id('editLogs'), vals, next);
+    }
+    function openEditEntry(id) {
+        const e = collectedData.find(x => x.id === id);
+        if (!e || !editModal) return;
+        editingId = id;
+        const empty = isEmptyPlot(e);
+        $id('editEntryTitle').textContent = empty ? `Plot ${e.plotNumber}, Area ${e.areaLetter}` : 'Edit Entry';
+        $id('editEntryTreeFields').hidden = empty;
+        $id('editSaveBtn').hidden = empty;
+        const msg = $id('editEntryEmptyMsg');
+        msg.hidden = !empty;
+        msg.textContent = empty ? 'Recorded as an empty plot (no tally trees). Delete it if trees should be entered here, or just enter a tree in this plot.' : '';
+        if (!empty) {
+            fillSelect($id('editArea'), areaLetters, e.areaLetter);
+            $id('editPlot').value = e.plotNumber;
+            fillSelect($id('editSpecies'), [...currentSpeciesList].sort((a, b) => a.localeCompare(b)), e.species);
+            fillSelect($id('editDbh'), DBH_VALUES.map(v => v.value), String(e.dbh));
+            editLogsFor(String(e.dbh), String(e.logs), true);
+            $id('editCut').checked = e.cutStatus === 'Yes';
+            $id('editUgs').checked = e.ugsStatus === 'Yes';
+            $id('editNotes').value = e.notes || '';
+        }
+        editModal.style.display = 'flex';
+    }
+    function closeEditEntry() { if (editModal) editModal.style.display = 'none'; editingId = null; }
+    function saveEditEntry() {
+        const e = collectedData.find(x => x.id === editingId);
+        if (!e) return closeEditEntry();
+        const plot = parseInt($id('editPlot').value, 10);
+        if (isNaN(plot) || plot < MIN_PLOT_NUMBER || plot > MAX_PLOT_NUMBER) { alert('Plot # must be 1–999.'); return; }
+        const area = $id('editArea').value;
+        Object.assign(e, {
+            areaLetter: area, plotNumber: plot,
+            species: $id('editSpecies').value, dbh: $id('editDbh').value, logs: $id('editLogs').value,
+            cutStatus: $id('editCut').checked ? 'Yes' : 'No', ugsStatus: $id('editUgs').checked ? 'Yes' : 'No',
+            notes: $id('editNotes').value.trim(),
+        });
+        // Moved into a plot recorded as empty: that plot has a tree now.
+        collectedData = collectedData.filter(x => !(isEmptyPlot(x) && x.areaLetter === area && x.plotNumber === plot));
+        closeEditEntry();
+        renderEntriesKeepingPosition();
+        saveSessionData();
+        showFeedback(`✓ Entry updated — ${e.species} ${e.dbh}" · Plot ${plot}, Area ${area}`);
+    }
+    function deleteEditEntry() {
+        const e = collectedData.find(x => x.id === editingId);
+        if (!e) return closeEditEntry();
+        const what = isEmptyPlot(e) ? `the empty-plot record for Plot ${e.plotNumber}` : `${e.species} ${e.dbh}" (Plot ${e.plotNumber})`;
+        if (!confirm(`Delete ${what}?`)) return;
+        collectedData = collectedData.filter(x => x.id !== editingId);
+        closeEditEntry();
+        renderEntriesKeepingPosition();
+        saveSessionData();
+        showFeedback('Entry deleted.');
+    }
+    /** Re-renders the list without moving the Area / Plot counters off where the cruiser is. */
+    function renderEntriesKeepingPosition() {
+        const plot = currentPlotNumber, area = currentAreaIndex;
+        renderEntries();
+        currentPlotNumber = plot; currentAreaIndex = area;
+        updatePlotDisplay(); updateAreaDisplay(); calculateAndDisplayNeededPlots();
+        saveSessionData();
+    }
+
+    // ============================================================
+    // BORDERLINE TREES (prism): limiting distance for the DBH on the wheel
+    // ============================================================
+    const plotRadiusFactor = () => Math.sqrt(75.625 / (currentBaf || 10));
+    const limitingDistanceFt = dbh => (dbh > 0 ? dbh * plotRadiusFactor() : null);
+    function updateBorderlineText() {
+        const el = document.getElementById('borderlineText');
+        if (!el || !dbhSelect) return;
+        const d = parseInt(dbhSelect.value, 10);
+        el.textContent = `Borderline ${d}": in within ${limitingDistanceFt(d).toFixed(1)} ft (BAF ${currentBaf})`;
+    }
+    function renderBorderline() {
+        const d = parseFloat($id('blDbh').value), face = parseFloat($id('blDist').value);
+        const ld = limitingDistanceFt(d);
+        $id('borderlineRule').textContent = `BAF ${currentBaf}: a tree is in when the distance from plot center to the tree's center is at most ${plotRadiusFactor().toFixed(3)} ft per inch of DBH.`;
+        const res = $id('blResult');
+        if (ld == null) res.innerHTML = '';
+        else {
+            // Measured to the face of the tree at breast height; the rule is to its center.
+            const toCenter = face > 0 ? face + d / 24 : null;
+            res.innerHTML = `Limiting distance: <b>${ld.toFixed(1)} ft</b>` + (toCenter != null
+                ? ` · to center ${toCenter.toFixed(1)} ft → <b class="${toCenter <= ld ? 'bl-in' : 'bl-out'}">${toCenter <= ld ? 'IN' : 'OUT'}</b>` : '');
+        }
+        const rows = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40];
+        const half = rows.length / 2;
+        $id('blTable').innerHTML = '<thead><tr><th>DBH</th><th>In within (ft)</th><th>DBH</th><th>In within (ft)</th></tr></thead><tbody>'
+            + rows.slice(0, half).map((r, i) => `<tr><td>${r}"</td><td>${limitingDistanceFt(r).toFixed(1)}</td><td>${rows[i + half]}"</td><td>${limitingDistanceFt(rows[i + half]).toFixed(1)}</td></tr>`).join('')
+            + '</tbody>';
+    }
+    function openBorderline() {
+        $id('blDbh').value = dbhSelect?.value || '';
+        $id('blDist').value = '';
+        renderBorderline();
+        $id('borderlineModal').style.display = 'flex';
+        setTimeout(() => $id('blDist').focus(), 50);
+    }
+
+    function handleDeleteSelected() {
+        if (!entriesTableBody) return;
+        const checks = entriesTableBody.querySelectorAll('input[type="checkbox"]:checked');
+        if (!checks.length) { showFeedback("No entries selected.", true); return; }
+        const ids = new Set(Array.from(checks).map(cb => parseInt(cb.getAttribute('data-id'),10)).filter(id => !isNaN(id)));
+        if (!confirm(`Delete ${ids.size} selected ${ids.size===1?'entry':'entries'}?`)) return;
+        if (!safetyCopy(`Before deleting ${ids.size} ${ids.size===1?'entry':'entries'}`)) return;
+        collectedData = collectedData.filter(e => !(e?.id && ids.has(e.id)));
+        renderEntries(); saveSessionData();
+        showFeedback(`${ids.size} ${ids.size===1?'entry':'entries'} deleted.`);
+    }
+
+    function handleDeleteAll() {
+        if (!collectedData.length) { showFeedback("No data to delete.", true); return; }
+        if (!confirm(`Delete ALL ${collectedData.length} entries in "${currentProject?.name}"?\n\nA safety copy is kept for 7 days (Projects tab).`)) return;
+        if (!safetyCopy('Delete All Data')) return;
+        collectedData = [];
+        currentAreaIndex = 0; currentPlotNumber = 1;
+        renderEntries();
+        updatePlotDisplay(); updateAreaDisplay();
+        saveSessionData();
+        showFeedback('All entries deleted. A safety copy is on the Projects tab for 7 days.', false, 4000);
+        currentLocation = null;
+        if (locationStatus) locationStatus.textContent = '';
+    }
+
+    // Hooks for the Recommendation Builder (recommendations.js)
+    window.ttGetDataAreas = () => [...new Set(collectedData.map(e => e.areaLetter).filter(Boolean))].sort();
+    window.ttGetCurrentArea = () => areaLetters[currentAreaIndex];
+
+    // ============================================================
+    // TAB SWITCHING
+    // ============================================================
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+            btn.setAttribute('aria-selected', String(btn.dataset.tab === tabId));
+        });
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            const isActive = panel.id === `tab-${tabId}`;
+            panel.classList.toggle('active', isActive);
+            panel.hidden = !isActive;
+        });
+        if (tabId === 'tally') renderTallyTab();
+        if (tabId === 'recs') window.TTRecs?.render();
+    }
+
+    // ============================================================
+    // COMPASS
+    // ============================================================
+    let orientationHandler = null;
+    const handleOrientation = (event) => {
+        let h = null, s = '---';
+        try {
+            if (event.absolute===true && event.alpha!==null) { h=360-event.alpha; s='True (abs)'; }
+            else if (event.webkitCompassHeading!=null) { h=event.webkitCompassHeading; s='Mag (webkit)'; }
+            else if (event.alpha!==null) { h=360-event.alpha; s='Mag (alpha)'; }
+            if (h !== null) {
+                h = (h+360) % 360;
+                if (compassNeedle) compassNeedle.style.transform = `translateX(-50%) rotate(${h}deg)`;
+                if (compassHeading) compassHeading.textContent = `${h.toFixed(0)}°`;
+                if (compassSource) compassSource.textContent = ` (${s})`;
+            }
+        } catch(e) {}
+    };
+
+    function startCompass() {
+        if (!compassContainer) return;
+        compassContainer.style.display = 'flex';
+        if (compassHeading) compassHeading.textContent = '---°';
+        if (compassSource) compassSource.textContent = ' (Initializing...)';
+        orientationHandler = handleOrientation;
+        if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', orientationHandler, true);
+        else if ('ondeviceorientation' in window) window.addEventListener('deviceorientation', orientationHandler, true);
+        else { if (compassHeading) compassHeading.textContent = 'N/A'; if (compassSource) compassSource.textContent = ' (Unsupported)'; }
+    }
+
+    // ============================================================
+    // EVENT LISTENERS
+    // ============================================================
+    if (submitBtn)     submitBtn.addEventListener('click', handleSubmitEntry);
+    if (getLocationBtn) getLocationBtn.addEventListener('click', handleGetLocation);
+    if (saveCsvBtn)    saveCsvBtn.addEventListener('click', generateAndDownloadCsv);
+    if (deleteBtn)     deleteBtn.addEventListener('click', handleDeleteSelected);
+    if (deleteAllBtn)  deleteAllBtn.addEventListener('click', handleDeleteAll);
+
+    if (entriesTableBody) {
+        entriesTableBody.addEventListener('change', e => {
+            if (e.target.type === 'checkbox' && deleteBtn) deleteBtn.disabled = !isAnyCheckboxChecked();
+        });
+    }
+
+    // Record empty plot, edit entry (tap a row), borderline checker
+    document.getElementById('emptyPlotLine')?.addEventListener('click', e => { if (e.target.closest('#recordEmptyPlotBtn')) handleRecordEmptyPlot(); });
+    if (entriesTableBody) entriesTableBody.addEventListener('click', e => {
+        if (e.target.closest('input[type="checkbox"]')) return;
+        const tr = e.target.closest('tr[data-id]');
+        if (tr) openEditEntry(Number(tr.dataset.id));
+    });
+    $id('editDbh')?.addEventListener('change', e => editLogsFor(e.target.value, $id('editLogs').value));
+    $id('editSaveBtn')?.addEventListener('click', saveEditEntry);
+    $id('editCancelBtn')?.addEventListener('click', closeEditEntry);
+    $id('editDeleteBtn')?.addEventListener('click', deleteEditEntry);
+    editModal?.addEventListener('click', e => { if (e.target === editModal) closeEditEntry(); });
+    $id('borderlineBtn')?.addEventListener('click', openBorderline);
+    $id('blDbh')?.addEventListener('input', renderBorderline);
+    $id('blDist')?.addEventListener('input', renderBorderline);
+    $id('borderlineCloseBtn')?.addEventListener('click', () => { $id('borderlineModal').style.display = 'none'; });
+    $id('borderlineModal')?.addEventListener('click', e => { if (e.target.id === 'borderlineModal') e.target.style.display = 'none'; });
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape') return;
+        if (editModal?.style.display === 'flex') closeEditEntry();
+        if ($id('borderlineModal')?.style.display === 'flex') $id('borderlineModal').style.display = 'none';
+    });
+    // iPhone Safari ignores user-scalable=no; block pinch zoom directly.
+    document.addEventListener('gesturestart', e => e.preventDefault());
+
+    // Species quick-pick, Cut / UGS chips, notes toggle
+    const speciesQuick = document.getElementById('speciesQuick');
+    const cutChip = document.getElementById('cutChip');
+    const ugsChip = document.getElementById('ugsChip');
+    if (speciesQuick) speciesQuick.addEventListener('click', e => {
+        const b = e.target.closest('.sp-btn[data-species]');
+        if (!b || !speciesSelect) return;
+        speciesSelect.value = b.dataset.species;
+        renderSpeciesQuickPick();
+    });
+    if (speciesSelect) speciesSelect.addEventListener('change', () => renderSpeciesQuickPick());
+    if (cutCheckbox) cutCheckbox.addEventListener('change', () => cutChip?.classList.toggle('on', cutCheckbox.checked));
+    if (ugsCheckbox) ugsCheckbox.addEventListener('change', () => ugsChip?.classList.toggle('on', ugsCheckbox.checked));
+    const notesToggleBtn = document.getElementById('notesToggleBtn');
+    if (notesToggleBtn) notesToggleBtn.addEventListener('click', () => {
+        const group = document.getElementById('notesGroup');
+        const open = !!group?.hidden;
+        if (!open && notesTextarea?.value.trim()) { notesTextarea.focus(); return; }
+        setNotesOpen(open);
+        if (open) setTimeout(() => {
+            notesTextarea?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            notesTextarea?.focus({ preventScroll: true });
+        }, 30);
+    });
+    if (notesTextarea) notesTextarea.addEventListener('input', () => setNotesOpen(true));
+    window.addEventListener('resize', () => { const b = document.getElementById('speciesQuick'); if (b) fitQuickLabels(b); });
+
+    // Swipe left/right across the Area / Plot counters to change plots.
+    const plotCounterRow = document.getElementById('plotCounterRow');
+    let swipeStart = null;
+    if (plotCounterRow) {
+        plotCounterRow.addEventListener('touchstart', e => { swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+        plotCounterRow.addEventListener('touchend', e => {
+            const s = swipeStart; swipeStart = null;
+            if (!s) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - s.x, dy = t.clientY - s.y;
+            if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+            if (dx > 0) plotIncrementBtn?.click(); else plotDecrementBtn?.click();
+            navigator.vibrate?.(30);
+        });
+    }
+
+
+    if (plotDecrementBtn) plotDecrementBtn.addEventListener('click', () => {
+        if (currentPlotNumber > MIN_PLOT_NUMBER) { currentPlotNumber--; updatePlotDisplay(); saveSessionData(); }
+    });
+    if (plotIncrementBtn) plotIncrementBtn.addEventListener('click', () => {
+        if (currentPlotNumber < MAX_PLOT_NUMBER) { currentPlotNumber++; updatePlotDisplay(); saveSessionData(); }
+    });
+    if (areaDecrementBtn) areaDecrementBtn.addEventListener('click', () => {
+        if (currentAreaIndex > 0) { currentAreaIndex--; updateAreaDisplay(); calculateAndDisplayNeededPlots(); saveSessionData(); }
+    });
+    if (areaIncrementBtn) areaIncrementBtn.addEventListener('click', () => {
+        if (currentAreaIndex < areaLetters.length-1) { currentAreaIndex++; updateAreaDisplay(); calculateAndDisplayNeededPlots(); saveSessionData(); }
+    });
+
+    if (toggleSettingsBtn) {
+        toggleSettingsBtn.addEventListener('click', () => {
+            if (!settingsSection) return;
+            const isHidden = settingsSection.hidden;
+            settingsSection.hidden = !isHidden;
+            toggleSettingsBtn.setAttribute('aria-expanded', String(isHidden));
+            toggleSettingsBtn.innerHTML = isHidden ? '&#10005; Settings' : '&#9881; Settings';
+        });
+    }
+
+    if (bafSelect) bafSelect.addEventListener('change', e => { currentBaf = parseInt(e.target.value,10); saveSettings(); showSettingsFeedback(`BAF = ${currentBaf}`); calculateAndDisplayNeededPlots(); updateBorderlineText(); });
+    if (logRuleSelect) logRuleSelect.addEventListener('change', e => { currentLogRule = e.target.value; saveSettings(); showSettingsFeedback(`Rule: ${currentLogRule}`); checkAndSetLogsForDbh(); calculateAndDisplayNeededPlots(); updateFormClassVisibility(); });
+    if (formClassSelect) formClassSelect.addEventListener('change', e => { currentFormClass = parseInt(e.target.value,10); saveSettings(); showSettingsFeedback(`Doyle FC: ${currentFormClass}`); calculateAndDisplayNeededPlots(); });
+    if (generateGraphsSelect) generateGraphsSelect.addEventListener('change', e => { currentGenerateGraphs = e.target.value; saveSettings(); showSettingsFeedback(`Graphs: ${currentGenerateGraphs}`); updateSaveBtnLabel(); });
+
+    // Dark mode
+    if (darkModeSelect) darkModeSelect.addEventListener('change', e => {
+        currentDarkMode = e.target.value;
+        saveSettings();
+        applyDarkMode();
+        showSettingsFeedback(`Dark mode: ${currentDarkMode}`);
+    });
+    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (currentDarkMode === 'system') applyDarkMode();
+    });
+
+    // Manual update check
+    if (manualUpdateCheckBtn && 'serviceWorker' in navigator) {
+        manualUpdateCheckBtn.addEventListener('click', () => {
+            if (updateStatusTimeout) clearTimeout(updateStatusTimeout);
+            if (updateCheckStatus) updateCheckStatus.textContent = 'Checking...';
+            manualUpdateCheckBtn.disabled = true;
+            navigator.serviceWorker.ready
+                .then(r => r.update())
+                .then(reg => {
+                    if (!reg) { if (updateCheckStatus) updateCheckStatus.textContent = 'Check failed.'; return; }
+                    if (reg.installing) { if (updateCheckStatus) updateCheckStatus.textContent = 'Update installing...'; }
+                    else if (reg.waiting) { if (updateCheckStatus) updateCheckStatus.textContent = 'Update ready!'; }
+                    else { if (updateCheckStatus) updateCheckStatus.textContent = 'Up to date.'; }
+                    updateStatusTimeout = setTimeout(() => { if (updateCheckStatus) updateCheckStatus.textContent = ''; }, 3000);
+                })
+                .catch(() => { if (updateCheckStatus) updateCheckStatus.textContent = 'Check failed.'; })
+                .finally(() => { if (manualUpdateCheckBtn) manualUpdateCheckBtn.disabled = false; });
+        });
+    }
+
+    if (showInfoBtn) showInfoBtn.addEventListener('click', () => window.open('./README.md', '_blank', 'noopener'));
+    if (zipExportSelect) zipExportSelect.addEventListener('change', e => { currentZipExport = e.target.value; saveSettings(); showSettingsFeedback(`ZIP export: ${currentZipExport}`); updateSaveBtnLabel(); });
+
+    // Species management
+    if (addSpeciesBtn) addSpeciesBtn.addEventListener('click', () => {
+        if (!newSpeciesInput) return;
+        const name = newSpeciesInput.value.trim();
+        if (!name) { showSpeciesFeedback("Enter a species name.", true); return; }
+        if (currentSpeciesList.some(s => s.toLowerCase() === name.toLowerCase())) { showSpeciesFeedback(`"${name}" already exists.`, true); return; }
+        currentSpeciesList.push(name);
+        populateSpeciesDropdowns(); saveSpeciesList(); newSpeciesInput.value = '';
+        showSpeciesFeedback(`"${name}" added.`);
+    });
+
+    if (removeSpeciesBtn) removeSpeciesBtn.addEventListener('click', () => {
+        if (!removeSpeciesSelect) return;
+        const toRemove = Array.from(removeSpeciesSelect.selectedOptions).map(o => o.value);
+        if (!toRemove.length) { showSpeciesFeedback("Select species to remove.", true); return; }
+        if (!confirm(`Remove: ${toRemove.join(', ')}?`)) return;
+        currentSpeciesList = currentSpeciesList.filter(s => !toRemove.includes(s));
+        populateSpeciesDropdowns(); saveSpeciesList();
+        showSpeciesFeedback(`Removed: ${toRemove.join(', ')}.`);
+    });
+
+    // Projects tab
+    if (projectNameInput) {
+        projectNameInput.addEventListener('change', () => {
+            const name = projectNameInput.value.trim();
+            if (!name || !currentProject) { projectNameInput.value = currentProject?.name || ''; return; }
+            currentProject.name = name;
+            saveSessionData();
+            renderProjectsPanel();
+            showProjectFeedback(`Renamed to "${name}".`);
+        });
+    }
+    if (loadProjectBtn) loadProjectBtn.addEventListener('click', handleOpenProject);
+    document.getElementById('newProjectBtn')?.addEventListener('click', handleNewProject);
+    document.getElementById('copyProjectBtn')?.addEventListener('click', handleCopyProject);
+    if (deleteProjectBtn) deleteProjectBtn.addEventListener('click', handleDeleteProject);
+    document.getElementById('snapshotList')?.addEventListener('click', e => {
+        const b = e.target.closest('[data-restore-snap]');
+        if (b) handleRestoreSnapshot(b.dataset.restoreSnap);
+    });
+    document.getElementById('saveBackupBtn')?.addEventListener('click', handleSaveBackup);
+    document.getElementById('backupReminderSave')?.addEventListener('click', handleSaveBackup);
+    document.getElementById('backupReminderLater')?.addEventListener('click', () => {
+        Store.writeJSON(Store.K.backupSnooze, Date.now() + 86400000, { quiet: true });
+        renderBackupReminder();
+    });
+    const restoreInput = document.getElementById('restoreBackupInput');
+    document.getElementById('restoreBackupBtn')?.addEventListener('click', () => restoreInput?.click());
+    restoreInput?.addEventListener('change', () => {
+        const f = restoreInput.files?.[0];
+        if (f) handleRestoreBackupFile(f);
+        restoreInput.value = '';
+    });
+    document.getElementById('saveErrorBar')?.addEventListener('click', () => {
+        const st = Store.getSaveState();
+        alert(`${st.error || 'Saving failed.'}\n\nYour latest changes are still on screen. To protect them:\n1. Projects tab → Save Backup.\n2. Delete finished projects you have backed up.\n3. Make any change to save again.`);
+    });
+    Store.onSaveState(renderSaveState);
+
+        // ============================================================
+    // CSV FILE LOADER — shared by button and drag-and-drop
+    // ============================================================
+    function loadCsvFile(file) {
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            showProjectFeedback("Must be a .csv file.", true);
+            if (csvFileInput) csvFileInput.value = null;
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const parsed = parseCsvAndLoadData(e.target.result);
+                if (!parsed.length) { showProjectFeedback("No valid data found in CSV.", true); if (csvFileInput) csvFileInput.value=null; return; }
+                let chosenArea = null;
+                do {
+                    chosenArea = prompt(`Enter Area Letter (A-Z) for all ${parsed.length} entries from "${file.name}":`, areaLetters[currentAreaIndex]);
+                    if (chosenArea === null) { showProjectFeedback("CSV load cancelled.", false); if (csvFileInput) csvFileInput.value=null; return; }
+                    chosenArea = chosenArea.trim().toUpperCase();
+                } while (!(chosenArea.length===1 && areaLetters.includes(chosenArea)) && (alert("Enter a single letter A-Z.") || true));
+
+                const existing = collectedData.filter(e => e.areaLetter === chosenArea);
+                const maxPlot = existing.reduce((max, e) => Math.max(max, parseInt(e.plotNumber,10)||0), 0);
+                let nextPlot = maxPlot + 1;
+                const origPlots = [...new Set(parsed.map(e => parseInt(e.plotNumber,10)).filter(n => !isNaN(n)))].sort((a,b)=>a-b);
+                const plotMap = {};
+                origPlots.forEach(op => {
+                    if (maxPlot > 0) { plotMap[op] = Math.min(nextPlot++, MAX_PLOT_NUMBER); }
+                    else plotMap[op] = op;
+                });
+                parsed.forEach(e => {
+                    const op = parseInt(e.plotNumber,10);
+                    if (!isNaN(op) && plotMap[op] !== undefined) e.plotNumber = plotMap[op];
+                    e.areaLetter = chosenArea;
+                });
+                if (!safetyCopy(`Before adding ${file.name}`)) { if (csvFileInput) csvFileInput.value = null; return; }
+                collectedData = collectedData.concat(parsed);
+                renderEntries(); saveSessionData();
+                showProjectFeedback(`Added ${parsed.length} entries to Area ${chosenArea}.${maxPlot>0?' Plots renumbered.':''}`, false, 4000);
+                currentLocation = null;
+                if (locationStatus) locationStatus.textContent = '';
+                if (csvFileInput) csvFileInput.value = null;
+            } catch(err) {
+                showProjectFeedback(`CSV Error: ${err.message}`, true, 5000);
+                if (csvFileInput) csvFileInput.value = null;
+            }
+        };
+        reader.onerror = () => { showProjectFeedback("File read error.", true); if (csvFileInput) csvFileInput.value=null; };
+        reader.readAsText(file);
+    }
+
+    if (loadCsvBtn) loadCsvBtn.addEventListener('click', () => {
+        const file = csvFileInput?.files[0];
+        if (!file) { showProjectFeedback("Select a CSV file.", true); return; }
+        loadCsvFile(file);
+    });
+
+    // ---- Drag-and-drop CSV zone ----
+    const csvDropZone = document.getElementById('csvDropZone');
+    if (csvDropZone) {
+        csvDropZone.addEventListener('dragover', e => {
+            e.preventDefault();
+            csvDropZone.classList.add('drag-over');
+        });
+        csvDropZone.addEventListener('dragleave', e => {
+            if (!csvDropZone.contains(e.relatedTarget)) csvDropZone.classList.remove('drag-over');
+        });
+        csvDropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            csvDropZone.classList.remove('drag-over');
+            const file = e.dataTransfer?.files[0];
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                showProjectFeedback("Must be a .csv file.", true);
+                return;
+            }
+            loadCsvFile(file);
+        });
+        // Also allow tapping the drop zone on mobile to trigger file picker
+        csvDropZone.addEventListener('click', () => csvFileInput?.click());
+    }
+
+    // Tally area selector
+    if (tallyAreaSelect) tallyAreaSelect.addEventListener('change', renderTallyTab);
+
+    // Stocking chart
+    if (calculateStockingBtn) calculateStockingBtn.addEventListener('click', renderStockingChart);
+
+    // Compass
+    if (showCompassBtn) {
+        showCompassBtn.addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent !== 'undefined') {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission()
+                        .then(p => { if (p==='granted') startCompass(); else alert("Permission required for compass."); })
+                        .catch(e => alert("Permission error: " + e.message));
+                } else startCompass();
+            } else alert("Compass not supported by this browser.");
+        });
+    }
+
+    if (closeCompassBtn) {
+        closeCompassBtn.addEventListener('click', () => {
+            if (compassContainer) compassContainer.style.display = 'none';
+            if (orientationHandler) {
+                window.removeEventListener('deviceorientationabsolute', orientationHandler, true);
+                window.removeEventListener('deviceorientation', orientationHandler, true);
+                orientationHandler = null;
+            }
+        });
+    }
+
+    // Tree Key Modal
+    if (showTreeKeyBtn && treeKeyModal) showTreeKeyBtn.addEventListener('click', () => treeKeyModal.style.display = 'flex');
+    const closeKeyModal = () => { if (treeKeyModal) treeKeyModal.style.display = 'none'; };
+    if (closeTreeKeyBtn)       closeTreeKeyBtn.addEventListener('click', closeKeyModal);
+    if (closeTreeKeyBtnBottom) closeTreeKeyBtnBottom.addEventListener('click', closeKeyModal);
+    if (treeKeyModal) treeKeyModal.addEventListener('click', e => { if (e.target === treeKeyModal) closeKeyModal(); });
+
+    // Tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // ============================================================
+    // ============================================================
+    // NOTES TAB
+    // ============================================================
+    let notesSaveTimeout = null;
+    /** Typed into Stand Notes since the last save. */
+    let notesDirty = false;
+
+    function saveStandNotes() {
+        clearTimeout(notesSaveTimeout);
+        notesDirty = true;
+        const ok = saveSessionData();
+        if (notesSavedStatus && ok) {
+            notesSavedStatus.textContent = '✓ Saved';
+            notesSaveTimeout = setTimeout(() => { if (notesSavedStatus) notesSavedStatus.textContent = ''; }, 2000);
+        }
+    }
+    /** Writes notes typed in the last moment (before a project switch, or when the app is hidden). */
+    function flushNotes() {
+        if (notesDirty && currentProject) saveStandNotes();
+    }
+
+    function getStandNotesText() {
+        return standNotesTextarea?.value?.trim() || '';
+    }
+
+    if (standNotesTextarea) {
+        standNotesTextarea.addEventListener('input', () => {
+            notesDirty = true;
+            clearTimeout(notesSaveTimeout);
+            notesSaveTimeout = setTimeout(saveStandNotes, 600);
+            if (notesSavedStatus) notesSavedStatus.textContent = '';
+        });
+    }
+
+    if (clearNotesBtn) {
+        clearNotesBtn.addEventListener('click', () => {
+            if (!standNotesTextarea?.value?.trim()) return;
+            if (confirm('Clear the stand notes for this project? A safety copy is kept for 7 days.')) {
+                if (!safetyCopy('Stand notes cleared')) return;
+                standNotesTextarea.value = '';
+                saveStandNotes();
+            }
+        });
+    }
+
+    // Screen lock, app switch or close: save anything still pending.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushNotes(); saveSessionData(); } });
+    window.addEventListener('pagehide', () => { flushNotes(); saveSessionData(); });
+
+    // Recommendation Builder keeps its per-area lists in the open project.
+    window.ttGetProjectRecs = () => (currentProject ? (currentProject.recs ||= {}) : {});
+    window.ttSaveProjectRecs = () => saveSessionData();
+
+        // ============================================================
+    // INSTALL PROMPT (PWA)
+    // ============================================================
+    function showInstallUI(show) {
+        if (installBanner) installBanner.style.display = show ? 'flex' : 'none';
+        if (installAppBtn) installAppBtn.style.display = show ? 'inline-flex' : 'none';
+    }
+
+    window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        // Only show banner if not dismissed this session
+        if (!sessionStorage.getItem('installDismissed')) showInstallUI(true);
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        showInstallUI(false);
+    });
+
+    async function triggerInstall() {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') deferredInstallPrompt = null;
+        showInstallUI(false);
+    }
+
+    if (installAcceptBtn) installAcceptBtn.addEventListener('click', triggerInstall);
+    if (installAppBtn)    installAppBtn.addEventListener('click', triggerInstall);
+    if (installDismissBtn) installDismissBtn.addEventListener('click', () => {
+        showInstallUI(false);
+        sessionStorage.setItem('installDismissed', '1');
+    });
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+    function initializeApp() {
+        console.log("TimberTally v7 initializing...");
+        try {
+            const updateEl = document.getElementById('updateNotification');
+            if (updateEl) updateEl.style.display = 'none';
+            const startProject = Store.open(); // migrates TimberTally 2 data once, before settings and species are read
             loadSettings();
+            updateFormClassVisibility();
             initializeSpeciesManagement();
-            initializeProjectManagement();
             populateDbhOptions();
             populateLogsOptions();
             checkAndSetLogsForDbh();
-            loadAndPromptSessionData(); // Also calls renderEntries, updatePlotDisplay, updateAreaDisplay
-            // updatePlotDisplay(); // Already called by loadAndPromptSessionData
-            // updateAreaDisplay(); // Already called by loadAndPromptSessionData
-            // calculateAndDisplayNeededPlots(); // Already called by renderEntries
-            updateFormClassVisibility();
-            console.log("TimberTally application initialization complete.");
-        } catch(initError) {
-            console.error("FATAL ERROR during initialization:", initError);
-            if (document.body) { // Check if body exists before trying to modify it
-                document.body.innerHTML = `<div style='padding:20px; color:red;'><h2>App Init Failed</h2><p>${initError.message}</p>Check console.</div>`;
+            // Opens the last project. Nothing is ever asked or deleted at startup.
+            openProject(startProject, { quiet: true });
+            renderSaveState(Store.getSaveState());
+            updateSaveBtnLabel();
+            console.log("TimberTally v7 initialized.");
+        } catch(err) {
+            console.error("INIT ERROR:", err);
+            if (document.body) {
+                document.body.innerHTML = `<div style="padding:20px;color:red;"><h2>App Init Failed</h2><p>${err.message}</p>Check console.</div>`;
             }
         }
     }
 
     initializeApp();
 
-}); // --- End DOMContentLoaded ---
+}); // end DOMContentLoaded
 
 // --- END OF script.js ---

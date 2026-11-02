@@ -2,122 +2,210 @@
 
 ![TimberTally Tree Icon](icon.png)
 
-A Progressive Web App (PWA) designed for simple and efficient offline-first collection of timber inventory data. Record plot number, area letter, forestry settings, tree species, diameter at breast height (DBH), log count, cut status, optional notes, and GPS location directly in the field.
+A Progressive Web App (PWA) designed for simple and efficient offline-first collection of timber inventory data. Record plot number, area letter, tree species, DBH, log count, cut/UGS status, optional notes, and GPS location directly in the field — then export comprehensive CSV reports and publication-quality graphs when you're back at the desk.
 
-This application allows users, such as foresters, researchers, or landowners, to quickly record timber data, even without an internet connection. Data is stored locally. Comprehensive CSV files, calculated forestry metrics, and optional graphs can be exported **per defined area** based on user-defined settings.
-
-*Contact for inquiries: james.a.baunach@gmail.com*
+*Contact: timbertallyapp@gmail.com*
 
 ## Understanding the App
 
-*   [How TimberTally Calculates Results](https://timbertally.github.io/TimberTally/calculations_explained.html)
-*   [Understanding the CSV Output File](https://timbertally.github.io/TimberTally/csv_explained.html)
-*   [Proof of Work](https://timbertally.github.io/TimberTally/proof_of_work.html)
+*   [TimberTally Reference Guide](https://timbertally.github.io/TimberTally/timbertally_reference.html) — Calculations explained, CSV output guide, and proof of work in one tabbed document.
+*   [Privacy Policy](https://timbertally.github.io/TimberTally/privacy.html)
+
+---
 
 ## Features
 
-*   **Offline First:** Uses a Service Worker (`v6`) to cache application files, allowing it to load and function without network access after the first visit. Includes an update notification system.
-*   **Simple Data Entry:** Intuitive interface for recording:
-    *   Plot Number (1-99) with easy increment/decrement buttons.
-    *   Area Letter (A-Z) with easy increment/decrement buttons.
-    *   Forestry Settings (BAF, Log Rule, Doyle Form Class, Graph Generation) via a collapsible "Settings ⚙" section. Settings are saved locally.
-    *   Tree Species (from a customizable list).
-    *   DBH (Diameter at Breast Height - standard even classes).
-    *   Logs (Number of logs, including halves and 'Cull').
-    *   Cut Status (Yes/No checkbox).
-    *   Optional Notes (Text area).
-    *   Optional GPS Location (Latitude/Longitude via button).
-*   **Persistent Settings:** Basal Area Factor (BAF), Log Rule (Doyle, Scribner, International 1/4"), Doyle Form Class (72, 74, 76, 78, 80, 82), and Graph Generation preference (Yes/No) are saved locally and persist between sessions. The Form Class selector is only shown when Doyle rule is selected.
-*   **Custom Species Management:** Add new species to the dropdown list or remove existing ones via the collapsible "Species Management" section. Your custom list is saved locally.
-*   **Project Management:**
-    *   **Save/Load Named Projects:** Save the current dataset under a project name. Load previously saved projects (replaces current data). Project list is saved locally.
-    *   **Load from CSV:** Load data from an external CSV file (requires specific headers: PlotNumber, Area, DBH, Species, Logs, Cut, etc.). Prompts user to assign an Area Letter to all loaded entries. Replaces current data.
-    *   **Delete Saved Projects:** Remove previously saved projects from local storage.
-*   **Session Recovery:** If the browser is closed or refreshed unexpectedly, the app prompts to recover unsaved data entered during the session (uses localStorage).
-*   **GPS Location:** Capture the device's current latitude and longitude with a button press (requires device support and user permission). Status shown next to button.
-*   **Recent Entries List:** Displays a scrollable table of recently added trees for quick review.
-*   **Entry Deletion:** Select and delete unwanted entries individually using checkboxes and the "Delete Selected" button. A "Delete All Data" button (with confirmation) clears all current entries.
-*   **Data Tally View:** Provides an on-screen summary tally grouped by Species, DBH, Logs, and Cut status for all collected data.
-*   **Plot Goal Display:** Shows an estimate of plots needed for the **current Area** to achieve +/- 10% and +/- 20% precision (based on Coefficient of Variation from plots within that Area, t=2). Requires at least 2 plots in the current Area.
-*   **Per-Area CSV Export & Optional Graphs:**
-    *   **Uses Current Settings:** Generates outputs using the currently selected BAF, Log Rule, Form Class, and Graph settings.
-    *   **Separate Files per Area:** Generates a distinct CSV file for each unique Area Letter (e.g., Area A, Area B) present in the data.
-    *   **Comprehensive CSV Content (per Area):** Each CSV file includes:
-        1.  **Raw Data:** All collected entries for that Area (Plot#, Area, DBH, Species, Logs, Cut, Notes, Lat, Lon).
-        2.  **Tally Summary:** Count of trees grouped by Species, DBH, Logs, and Cut Status for that Area.
-        3.  **Per-Plot Volume & Stats:** Volume (BF/Acre) calculated for each plot in that Area, plus statistical summary (Mean BF/Acre, Variance, Std Dev, CV across plots in that Area).
-        4.  **Forestry Report:** Detailed stand tables calculated from the Area's data and current settings, including overall summaries (Vol/Acre, Trees/Acre, BA/Acre, QMD for Total/Cut/Leave) and breakdowns by DBH class and Species (% Stems, TPA, BA/Acre, Vol/Acre).
-    *   **Optional Graph Generation (JPG):** If enabled in Settings, generates and downloads four JPG graphs **per Area**:
-        1.  Basal Area Distribution (Cut/Leave by DBH Class).
-        2.  Trees Per Acre Distribution (Cut/Leave by DBH Class).
-        3.  Volume by Species (Total BF/Acre per Species).
-        4.  Sawtimber Volume Distribution by Species (Small/Medium/Large Sawtimber BF/Acre per Species).
-    *   **Filename Convention:** Files are named like `ProjectName_AreaX_RuleFC_BAF_Timestamp.csv` (or `.jpg`).
-*   **Integrated Compass:** A simple on-screen compass accessed via the "Show Compass" button, using device orientation sensors (requires device support and user permission; accuracy depends on device and calibration).
-*   **Integrated Tree ID Key:** A basic dichotomous key modal for common Eastern US Deciduous trees, accessed via the "Show Tree ID Key" button in Settings.
-*   **Privacy Policy:** Link to the privacy policy available in the Settings section.
-*   **Responsive Design:** Layout adjusts for better usability on smaller mobile screens.
+### Offline-First PWA
+Uses a Service Worker to cache all application files after the first load, allowing the app to run fully without network access. Includes automatic update detection with a prompted in-app update notification.
+
+### Data Entry (Data Tab)
+The field entry form from ForestScribe, built for one-handed use:
+
+*   **Area / Plot #** — joined -/+ steppers side by side (Area A–Z, Plot 1–999). Swipe left or right across them to change plots. The Plot # label shows how many trees are already in the current plot, and the Plots Needed estimate sits just below.
+*   **Species** — the 8 species you use most appear as quick-pick buttons (2 rows of 4, refreshed every 10 entries; long names are shortened to fit, e.g. Northern Red Oak to N. Red Oak). Common hardwoods fill the first row until you have your own. The full list is in the dropdown below, which starts blank so a tree is never saved as the wrong species by accident.
+*   **DBH / Logs** — scroll wheels (4 to 40 in. DBH; 0.5 to 6 logs or Cull). The wheel follows your finger, stops when your finger stops, and a flick coasts a short way; tap a row to pick it, or use a mouse wheel on a computer. Trees 10 in. and under are always 0 logs.
+*   **Cut / UGS** — toggle chips (UGS = Unacceptable Growing Stock; default AGS).
+*   **Tool buttons** — GPS (saves the location with the next tree), Compass, and Notes (opens a note box for this tree; a dot shows when a note is written).
+*   **Submit Entry** — stays pinned to the bottom of the screen while you scroll.
+*   **Record empty plot** — when the current plot has no trees, a link under Submit records it as an empty plot so it still counts toward the number of plots (otherwise per-acre values come out too high). Empty plots export as an EMPTY PLOT row in the CSV and load back the same way.
+*   **Edit an entry** — tap any row in Recent Entries to change its area, plot, species, DBH, logs, Cut/UGS or notes, or delete it.
+*   **Borderline trees** — the line under the wheels shows the limiting distance for the DBH on the wheel at the current BAF; tap it to check a measured distance (IN / OUT) and see a quick table.
+*   **GPS** — the GPS button averages several readings for a steadier point, shows the accuracy as it improves, and warns when it is weak (worse than 15 m). If location access is already allowed, each plot's 3rd tree gets a location automatically.
+*   **Field-proofing** — pinch and double-tap zoom are off, the installed app stays in portrait, and a double tap on Submit saves the tree only once.
+
+### Plots Needed Display
+Estimates plots required for the current Area to reach 10%, 20% and 30% precision, calculated from the Coefficient of Variation across plots within that Area (t=2). Shown under the Area / Plot counters on the Data tab. Requires at least 2 plots in the current Area.
+
+### Saving, Backup & Safety Copies
+TimberTally 3 saves like ForestScribe:
+
+*   **Live projects** — the open project is the saved copy. Every tree, edit, plot move, stand note and recommendation is written to it immediately, and again when the screen locks or you switch apps. On restart the app opens the same project at the same plot and area. There is no "recover unsaved data?" prompt, and nothing is ever deleted at startup.
+*   **Honest save status** — the header shows the time of the last save. If a save fails (for example, device storage is full) a red bar appears on every screen size explaining what to do, and the header shows "⚠ Not saved".
+*   **Safety copies** — a full copy of the project is kept automatically before Delete All Data, deleting selected entries, deleting a project, clearing stand notes, or adding a CSV. Copies are listed on the Projects tab for 7 days, and restoring one adds it as a new project.
+*   **Backup files** — **Save Backup** writes one `.json` file with every project, your species list and plan details (phones open the share sheet so it can go to Files, email or a cloud drive). **Restore Backup** only adds: projects already on the device are skipped, and a project that differs is added as a "(restored)" copy. Nothing on the device is replaced.
+*   **Backup reminder** — a banner appears when changes have gone 7 days without a backup (tap Later to snooze for a day).
+*   **Storage protection** — the app asks the browser to keep its storage rather than clear it to free space. The Projects tab shows whether that was granted and how much space is used.
+*   **Separate from TimberTally 2** — TimberTally 3 keeps its own storage. On first run it copies in TimberTally 2's saved projects, working data (as the open project), stand notes, settings and species list. TimberTally 2's data is left in place.
+
+### Forestry Settings
+Accessed via the ⚙ Settings button in the header (collapses/expands; sticks to the top of the screen alongside the header). Settings are saved locally and persist between sessions:
+
+*   **BAF** — Basal Area Factor (5, 10, 20, 30, 40).
+*   **Log Rule** — Doyle, Scribner, or International ¼".
+*   **Form Class** — Doyle only (70–86 in even steps; hidden for other rules).
+*   **Export Graphs** — Enable or disable PNG graph generation on CSV export.
+*   **Save as ZIP** — Bundle all CSVs, graphs, and stand notes into a single `.zip` download instead of individual files. Especially useful on iPhone where multiple file saves require individual confirmation.
+*   **Dark Mode** — Off, On, or System (follows device preference).
+
+Additional buttons in Settings: **Check Updates**, **Install App** (PWA install prompt, shown when available), **Tree ID Key**, and **ℹ Info** (opens the README).
+
+### Dark Mode
+Full dark mode with a forest-green palette. Toggled via Settings or automatically matched to system preference. All UI elements, tables, dropdowns, and backgrounds are fully themed — alternating table rows use distinct shades of dark green rather than white, keeping all text readable.
+
+### Projects Tab
+*   **Open Project** — the name of the project you are working in (edit it to rename). Below it: trees, plots and the last backup date.
+*   **Switch to Another Project** — opens another project. The one you leave is already saved.
+*   **+ New Project / Copy / Delete Project** — start a fresh cruise, save a copy of the open one, or delete it (a safety copy is kept for 7 days).
+*   **Backup & Restore** and **Safety Copies** — see Saving, Backup & Safety Copies above.
+*   **Import CSV** — choose or drag a `.csv` file to add its trees to the open project. Prompts for an Area Letter (A–Z) to assign to all imported entries. Plot numbers are renumbered if the chosen area already contains data.
+
+### Species Tab
+Manage the species list used across all dropdowns:
+
+*   **Add Species** — Type a name and click "+ Add" to add a new species.
+*   **Remove Species** — A scrollable multi-select list lets you select one or more species to remove.
+
+### Notes Tab
+Stand-level notes for the open project (observations, site conditions, ownership info, compass bearings, GPS waypoints). Notes save with the project as you type. On CSV export, notes are included as a separate `.txt` file alongside the CSV.
+
+### Tally Tab
+On-screen summary of all collected data, filterable by Area:
+
+*   **Summary Cards** — Key metrics at a glance: Trees/Acre, BA/Acre, Avg DBH (QMD), Vol/Acre, number of plots, and total tree entries.
+*   **Tree Tally** — Full breakdown by Species → DBH → Logs → Cut status.
+*   **Stand Charts** — Three live Chart.js charts rendered in-app: Basal Area Distribution (by DBH class, cut/leave), Trees Per Acre Distribution (by DBH class, cut/leave), and Volume by Species (horizontal bar, board feet/acre).
+
+### Stocking Tab
+Plots stand data on the **Gingrich (1967) stocking chart** for upland hardwoods. Axes are Trees Per Acre (TPA) on the X-axis and Basal Area per Acre (sq ft) on the Y-axis, with interpolated A-line and B-line stocking curves. Each area is plotted as three points (Total, Cut, Leave) color-coded by area letter, with the area letter labeled inside each point. A stats table above the chart shows TPA and BA/Acre for Total, Cut, and Leave by area.
+
+### Recs Tab (Recommendation Builder)
+A simple way to write the management recommendations for each Area, using the standard recommendation library from ForestScribe (48 recommendations in 9 categories: TSI, harvest & regeneration, invasive species, wildlife, pests & storm damage, and more).
+
+*   **Area** — recommendations are kept separately for each Area letter (defaults to the Area you are collecting on the Data tab).
+*   **Library buttons** — tap a category to open it, then tap a recommendation to add it (tap again to remove). Hover a button to see its text. Some recommendations ask for a detail when added (e.g. which invasive species); anything left blank becomes a write-in line.
+*   **Plan Details** — optional state, organization, county and phone numbers. These pick the right state wording (Kentucky vs. other states) and fill in names and numbers.
+*   **Edit** — change any wording, reorder with ↑/↓, remove, or add your own custom recommendation. Markup: `**bold**`, `__underline__`, a line starting with `• ` is a bullet, blank line = new paragraph.
+*   **Preview** — the finished, numbered recommendations. **Copy Recommendations** copies formatted text (bold, bullets and tables survive a paste into Word or Google Docs), with an option to include titles.
+
+Recommendations are saved with the open project (and in backup files); they are not included in CSV exports.
+
+---
+
+## CSV Export & Graph Output
+
+Click **💾 Save CSV** (or **💾 Save CSV & Graphs** / **💾 Save ZIP** depending on settings) to export. All calculations use the currently selected Settings (BAF, Log Rule, Form Class).
+
+### Per-Area CSV Files
+One CSV is generated per Area Letter present in the data, named:
+```
+ProjectName_AreaX_RuleFC_BAF_Timestamp.csv
+```
+Each CSV contains four sections:
+
+1.  **Raw Data** — All entries for that area: Plot#, Area, DBH, Species, Logs, Cut, UGS, Notes, Latitude, Longitude.
+2.  **Tally Summary** — Tree counts grouped by Species, DBH, Logs, and Cut status.
+3.  **Per-Plot Volume & Statistics** — Volume (BF/Acre) per plot, plus Mean, Variance, Std Dev, and CV across plots within the area.
+4.  **Forestry Report** — Full stand tables including overall summary (Vol/Acre, TPA, BA/Acre, QMD for Total/Cut/Leave), Stand Distribution by DBH size class, Species Composition by TPA percentage, and Volume by Species (Small/Medium/Large Sawtimber BF/Acre).
+
+### Stand Notes Export
+If any stand notes have been entered, they are exported as a separate `.txt` file alongside the CSV(s):
+```
+ProjectName_StandNotes_Timestamp.txt
+```
+
+### Optional Graph PNGs (when Export Graphs = Yes)
+Six PNG files are generated per area export:
+
+1.  **BA_Dist** — Basal Area Distribution by DBH class (Cut/Leave stacked bar).
+2.  **TPA_Dist** — Trees Per Acre Distribution by DBH class (Cut/Leave stacked bar).
+3.  **Vol_Species** — Volume by Species (horizontal bar, BF/Acre).
+4.  **Vol_Sawtimber** — Sawtimber Volume by Species, broken down by Small/Medium/Large size class.
+5.  **Gingrich_Stocking** — Gingrich stocking chart (1200×700px) plotting all areas on the TPA vs. BA/Acre chart with A-line and B-line curves.
+6.  **Summary_Report** — A landscape one-page summary PNG (4200×2700px, ~300 DPI equivalent) containing all key stand metrics, distribution tables, species summaries, and plot statistics.
+
+### ZIP Export (Save as ZIP = Yes)
+When enabled, all CSVs, PNGs, and the stand notes `.txt` are bundled into a single `.zip` file named:
+```
+ProjectName_Timestamp.zip
+```
+This is the recommended mode for iPhone users, as iOS requires individual save confirmation for each file download.
+
+---
 
 ## How to Use
 
-1.  **Load the App:** Open `index.html` in a modern web browser (Chrome, Firefox, Edge, Safari) on desktop or mobile.
-2.  **Install (Optional PWA):** On supported browsers/devices, you may be prompted to "Add to Home Screen" or "Install App" for a more native-like experience and reliable offline access.
-3.  **Recover Data (If Prompted):** If unsaved data from a previous session is found, you'll be asked if you want to recover it.
-4.  **Set Plot Number & Area Letter:** Use the `+` and `-` buttons next to "Plot #" and "Area:" to set the current identifiers for data entry. Check the "Plots Needed" display for guidance on the current Area.
-5.  **Configure Settings:**
-    *   Click the "Settings ⚙" button to expand the Forestry Settings section.
-    *   Select your desired BAF, Log Rule, and Doyle Form Class (if applicable).
-    *   Choose whether to "Generate Graph JPGs on Save".
-    *   Optionally, check for updates, view the Tree Key, or view the Privacy Policy.
-    *   Settings are saved automatically and will be used for calculations and export. Collapse the section when done.
-6.  **Enter Tree Data:**
-    *   Select Species, DBH, and Logs from the dropdowns. (Note: Logs may default to '0' for small DBH values under the Doyle rule).
-    *   Check the "Cut" box if applicable.
-    *   Optionally, click "Get Location" to record GPS coordinates (requires location permission). The status will update next to the button.
-    *   Optionally, add notes in the text area.
-7.  **Submit:** Click "Submit Entry". The entry will appear at the top of the "Recent Entries" list. Input fields (except Plot # and Area) are cleared or reset. The "Plots Needed" display may update if relevant.
-8.  **Manage Species (Optional):** Click "Show Species Management ▼" to expand the section. Add new species names or select existing ones to remove. Changes are saved automatically.
-9.  **Manage Projects (Optional):** Click "Show Project Management ▼" to expand the section.
-    *   To Save: Enter a name in "Current Project Name" and click "Save Project".
-    *   To Load: Select a project from the "Load Saved Project" dropdown and click "Load" (confirms replacing current data).
-    *   To Delete Saved: Select a project and click "Del".
-    *   To Load from File: Click "Choose File" under "Load Project from CSV", select your file, click "Load CSV". **You will be prompted to enter an Area Letter (A-Z) to assign to all loaded entries.**
-10. **Review/Delete Entries:** View entries in the "Recent Entries" table. Check the box(es) next to entries and click "Delete Selected". Confirm the deletion. Use "Delete All Data" (at the bottom) with caution to clear all entries.
-11. **View Tally:** Click "View Tally" to see an on-screen summary of **all** collected data across all areas. Click "Back to Data Entry" to return.
-12. **Use Compass:** Click "Show Compass" (located above the Recent Entries table). Grant permission if requested. The compass will display the heading. Click "Close" on the compass display when finished.
-13. **Save Data (Per Area):** Click "Save Area CSV(s)" (or "Save Area CSV(s) & Graphs" if enabled).
-    *   This will generate and trigger downloads for **one CSV file for each Area Letter** present in your data (e.g., `Project_AreaA_....csv`, `Project_AreaB_....csv`).
-    *   If graph generation is enabled, it will also trigger downloads for the **four JPG graph files for each Area**.
-    *   All calculations use the **currently selected settings** (BAF, Log Rule, Form Class).
-    *   Data remains in the app after saving.
+1.  **Open the App** in a modern browser (Chrome, Firefox, Edge, Safari) on desktop or mobile. After the first load, the app works fully offline.
+2.  **Install (Optional)** — On supported browsers, accept the install prompt or use the "Install App" button in Settings for a native-like home screen experience.
+3.  **Recover Data (If Prompted)** — If unsaved data from a previous session is found, confirm to restore it.
+4.  **Configure Settings** — Click ⚙ Settings to set BAF, Log Rule, Form Class, Graph export, ZIP export, and Dark Mode preferences. Collapse when done.
+5.  **Set Plot # and Area** — Use the +/− buttons on the Data tab to set your current plot number and area letter. Reference the "Plots Needed" display beside the Notes field for sampling guidance.
+6.  **Enter Tree Data** — Select Species, DBH, and Logs. Check Cut and/or UGS if applicable. Optionally tap GPS to record coordinates or add a per-tree note. Click **✔ Submit Entry**.
+7.  **Manage Species** — Use the Species tab to add or remove species from the dropdown.
+8.  **Manage Projects** — Use the Projects tab to save, load, or delete named projects. Load external CSV files via the file picker or by dragging and dropping a `.csv` directly onto the drop zone.
+9.  **Add Stand Notes** — Use the Notes tab for cruise-level observations. Notes save automatically and export as a `.txt` file.
+10. **Review Data** — Use the Tally tab to view summary cards, species/DBH breakdowns, and live charts. Use the Area dropdown to filter by area.
+11. **Check Stocking** — Use the Stocking tab to plot your stand(s) on the Gingrich chart. Click "Calculate & Plot Stocking."
+12. **Use the Compass** — Click 🧭 Compass (above the Recent Entries table on the Data tab) to open the on-screen compass. Grant orientation permission if prompted.
+13. **Delete Entries** — Check entries in the Recent Entries table and click 🗑 Delete. Use ⚠ Delete All Data (with confirmation) to clear everything.
+14. **Export** — Click **💾 Save CSV** to download output for all areas. With ZIP mode enabled, everything downloads as a single file.
+
+---
 
 ## Technical Details
 
-*   Built with vanilla HTML, CSS, and JavaScript.
-*   Implements Progressive Web App features using a Service Worker (`CACHE_NAME = 'timber-tally-cache-v6'`) for caching and offline functionality. Includes update checking and user-prompted activation.
-*   Uses `localStorage` for:
-    *   Temporary session recovery data (`timberTallyTempSession`).
-    *   Persistent custom species list (`timberTallyCustomSpecies`).
-    *   Persistent saved projects (`timberTallyProjects`).
-    *   Persistent forestry settings (`timberTallySettings`).
-*   Utilizes Chart.js (`https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js`) for generating graphs when the corresponding setting is enabled. Graphs are rendered on hidden canvases and exported as JPG.
-*   Calculates timber volumes using Doyle, Scribner, and International 1/4" log rules. Doyle calculations use an embedded Form Class 78 table and scale results based on the selected Form Class (72, 74, 76, 78, 80, 82).
-*   Generates **per-area** CSV exports containing raw data, tally summaries, per-plot volume/acre calculations, and detailed forestry reports (stand tables, species summaries including TPA, BA/Acre, Vol/Acre, QMD). Calculates plot statistics (Mean, Std Dev, CV) within each area for the CSV and for the "Plots Needed" display (using CV%, t=2).
-*   Utilizes the Device Orientation API (`deviceorientation` / `deviceorientationabsolute` events) for the compass feature (requires browser support and potentially user permissions).
+*   Built with vanilla HTML, CSS, and JavaScript — no frameworks or build tools.
+*   **PWA** via Service Worker for full offline support and in-app update notifications.
+*   **localStorage** keys used:
+    *   `timberTallyTempSession` — autosave / session recovery.
+    *   `timberTallyCustomSpecies` — custom species list.
+    *   `timberTallyProjects` — named saved projects.
+    *   `timberTallySettings` — BAF, log rule, form class, graph preference, ZIP preference, dark mode.
+    *   `timberTallyStandNotes` — persistent stand-level notes.
+*   **Chart.js** (`v4.4.1` via CDN) — used for in-app tally charts, the Gingrich stocking chart, and all export graph PNGs.
+*   **JSZip** (`v3.10.1` via CDN) — used for ZIP bundle export when Save as ZIP is enabled.
+*   **Volume calculations** — Doyle (FC70–86, scaled from embedded FC78 table), Scribner, and International ¼" log rules. Trees <10" DBH return 0 board feet (below sawtimber threshold).
+*   **Gingrich stocking chart** — TPA (x-axis) vs. BA/Acre (y-axis) with A-line and B-line curves interpolated from published Gingrich (1967) data points. Area points plotted as circle (Total), triangle (Cut), and square (Leave) with area letters labeled inside.
+*   **Summary Report PNG** — drawn entirely via the HTML5 Canvas 2D API (no Chart.js) at 3× logical resolution (4200×2700px physical) for print-quality output at 100% zoom.
+*   **Device APIs used** — Geolocation API (GPS), Device Orientation API (compass), beforeinstallprompt (PWA install).
+*   **Sticky header** — The app header and collapsible settings panel are wrapped in a single sticky block; the tab bar sticks directly below it with no gap. Height is measured dynamically via JavaScript on load, resize, and settings toggle.
+*   **Pull-to-refresh suppressed** — `overscroll-behavior: none` is applied to both `html` and `body` to prevent the Android Chrome pull-to-refresh indicator from appearing during normal scrolling.
+
+---
 
 ## Files
 
-*   `index.html`: The main structure and content of the web application.
-*   `style.css`: Stylesheet for the application's appearance and layout.
-*   `script.js`: Contains all the JavaScript logic for the application features.
-*   `manifest.json`: Web App Manifest file for PWA capabilities.
-*   `service-worker.js`: Manages caching (`v6`) and offline functionality.
-*   `icon.png`: Application icon used in the manifest.
-*   `README.md`: This file.
+| File | Purpose |
+|---|---|
+| `index.html` | App structure and all UI markup |
+| `style.css` | Stylesheet — light and dark mode, responsive layout |
+| `script.js` | All app logic — data entry, settings, projects, export, compass, etc. |
+| `forestry-calc.js` | Forestry calculation functions (TPA, BA, volume, stocking, tally) |
+| `forestry-data.js` | Static lookup tables — Doyle/Scribner/International volume tables, Gingrich curves, default species list |
+| `charts.js` | Chart.js chart builders — in-app tally charts, stocking chart, export graph generators, summary report canvas |
+| `manifest.json` | Web App Manifest for PWA install and theming |
+| `service-worker.js` | Caching and offline support |
+| `icon.png` | App icon |
+| `README.md` | This file |
+| `timbertally_reference.html` | Reference guide — calculations, CSV output, and proof of work |
+| `privacy.html` | Privacy policy |
+
+---
 
 ## Notes
 
-*   Session recovery, custom species, saved projects, and forestry settings rely on browser `localStorage`. Clearing browser data (cache, site data, cookies) will remove this stored information. Saving the CSV(s) is the primary way to permanently store collected plot data externally.
-*   GPS accuracy depends on the device and environmental factors.
-*   Compass accuracy depends heavily on device sensors, calibration, and potential magnetic interference. The displayed heading may be Magnetic North or True North depending on the specific event data provided by the browser/device. The source type (e.g., `abs`, `webkit`, `alpha`) is indicated.
-*   Graph generation requires Chart.js, loaded via CDN. Internet access might be needed the first time it's used if not cached by the service worker (though standard libraries often are).
+*   All data stored in `localStorage`. Clearing browser site data will erase saved projects, species, settings, and notes. Exporting CSV files is the primary way to permanently preserve collected data.
+*   GPS accuracy depends on device hardware and environmental conditions.
+*   Compass accuracy depends on device sensors and calibration. Keep the device away from metal objects. The heading source type (absolute, webkit, alpha) is indicated in the compass display.
+*   Graph export and ZIP export both require CDN libraries (Chart.js and JSZip). Internet access may be needed on first use if these are not already cached by the service worker.
+*   The Summary Report PNG is generated at 4200×2700px (3× scale) for crisp printing and screen viewing without zoom. File size is typically 4–6 MB.
+*   iPhone users: enable **Save as ZIP** in Settings to receive all output files as a single download, avoiding the individual save confirmation prompt for each file.

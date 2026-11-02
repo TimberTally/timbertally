@@ -2,7 +2,10 @@
 
 // V IMPORTANT: Increment this version number with each update!
 // Make sure this matches the version you intend to deploy.
-const CACHE_NAME = 'timber-tally-cache-v2.1'; // <--- CHANGE THIS with each new deployment!
+// Caches are named with this prefix so cleanup never touches caches from other
+// TimberTally versions hosted on the same github.io origin.
+const CACHE_PREFIX = 'timber-tally3-cache-';
+const CACHE_NAME = CACHE_PREFIX + 'v1'; // <--- CHANGE THIS with each new deployment!
 
 // List of files that make up the "app shell" - essential for offline loading.
 const urlsToCache = [
@@ -10,9 +13,20 @@ const urlsToCache = [
   './index.html',
   './style.css',
   './script.js',
+  './forestry-data.js',
+  './forestry-calc.js',
+  './charts.js',
+  './storage.js',
+  './scroll-wheel.js',
+  './recommendations-data.js',
+  './recommendations.js',
   './manifest.json',
-  './icon.png'
-  // Add any other critical assets like fonts, core images, etc.
+  './icon.png',
+  './timbertally_reference.html',
+  './privacy.html',
+  // CDN libraries (charts + ZIP export) so they work offline too
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
 ];
 
 // --- Installation Event ---
@@ -48,10 +62,18 @@ self.addEventListener('activate', event => {
     caches.keys().then(cacheNames => {
       // Promise.all waits for all cache deletions to complete.
       return Promise.all(
-        cacheNames.map(cacheName => {
-          // Delete any cache that isn't the current version's cache.
-          if (cacheName !== CACHE_NAME) {
+        cacheNames.map(async cacheName => {
+          if (cacheName === CACHE_NAME) return;
+          // Our own older versions.
+          if (cacheName.startsWith(CACHE_PREFIX)) {
             console.log('[Service Worker] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+          // An older TimberTally's cache for this same path (it held the old app's files at these
+          // addresses). Caches for other paths on this site (e.g. /TimberTally2/) are left alone.
+          const keys = await (await caches.open(cacheName)).keys();
+          if (keys.some(req => req.url.startsWith(self.registration.scope))) {
+            console.log('[Service Worker] Deleting previous app cache for this path:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -79,7 +101,8 @@ self.addEventListener('fetch', event => {
 
     // respondWith expects a Promise that resolves with a Response object.
     event.respondWith(
-        caches.match(event.request) // 1. Check if the request URL exists in ANY cache.
+        // 1. Check this version's cache only (other caches on the site may hold older app files).
+        caches.open(CACHE_NAME).then(cache => cache.match(event.request))
             .then(cachedResponse => {
                 // 2. If a cached response is found, return it directly.
                 if (cachedResponse) {
