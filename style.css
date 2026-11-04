@@ -1761,3 +1761,11 @@ body.dark-mode .stk-under { color: #f08a62; }
 
 .recs-details-note:empty { display: none; }
 #recsNrcsPhone[readonly] { background: var(--bg-row-alt); color: var(--text-dark); }
+
+/* Tally tab: the four stand charts (same look as the saved Graphs page) */
+.stand-charts-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 900px) { .stand-charts-grid { grid-template-columns: 1fr 1fr; } }
+.stand-chart-cell { border: 1px solid var(--forest-border); border-radius: var(--radius-sm); padding: 6px; background: #fff; min-width: 0; }
+body.dark-mode .stand-chart-cell { background: #1a2712; }
+.stand-chart-cell canvas { max-width: 100%; }
+.settings-note { font-size: 0.82em; color: var(--text-muted); margin: 10px 0 4px; line-height: 1.4; }

@@ -5,7 +5,7 @@
 // Caches are named with this prefix so cleanup never touches caches from other
 // TimberTally versions hosted on the same github.io origin.
 const CACHE_PREFIX = 'timber-tally3-cache-';
-const CACHE_NAME = CACHE_PREFIX + 'v6'; // <--- CHANGE THIS with each new deployment!
+const CACHE_NAME = CACHE_PREFIX + 'v8'; // <--- CHANGE THIS with each new deployment!
 
 // List of files that make up the "app shell" - essential for offline loading.
 const urlsToCache = [
@@ -16,6 +16,8 @@ const urlsToCache = [
   './forestry-data.js',
   './forestry-calc.js',
   './charts.js',
+  './lib/chart.umd.min.js',
+  './lib/jszip.min.js',
   './storage.js',
   './scroll-wheel.js',
   './kentucky-counties.js',
@@ -25,9 +27,6 @@ const urlsToCache = [
   './icon.png',
   './timbertally_reference.html',
   './privacy.html',
-  // CDN libraries (charts + ZIP export) so they work offline too
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
 ];
 
 // --- Installation Event ---

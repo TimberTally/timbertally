@@ -1,18 +1,19 @@
 // =============================================================================
-// charts.js — Chart.js generators for TimberTally
+// charts.js — stand charts, Gingrich stocking chart and export sheets for TimberTally
 // Depends on: forestry-data.js (BA_CONST)
 //             forestry-calc.js (calculateForestryReport, calculateStandStocking, gingrichBaAt)
 // All functions are called from script.js; chart instances are managed there.
 // =============================================================================
 
-// --- Shared color palette ---
+// --- Stand chart colors (the same in the app and in the saved Graphs sheet) ---
 const CHART_COLORS = {
-    leave: 'rgba(61,107,32,0.65)', leaveBorder: 'rgba(61,107,32,1)',
-    cut:   'rgba(200,35,51,0.65)', cutBorder:   'rgba(200,35,51,1)',
-    blue:  'rgba(13,110,253,0.65)', blueBorder:  'rgba(13,110,253,1)'
+    leave:  'rgba(75,192,192,0.6)',  leaveBorder:  'rgba(75,192,192,1)',
+    cut:    'rgba(255,99,132,0.6)',  cutBorder:    'rgba(255,99,132,1)',
+    vol:    'rgba(54,162,235,0.6)',  volBorder:    'rgba(54,162,235,1)',
+    sawS:   'rgba(255,206,86,0.6)',  sawSBorder:   'rgba(255,206,86,1)',
+    sawM:   'rgba(255,159,64,0.6)',  sawMBorder:   'rgba(255,159,64,1)',
+    sawL:   'rgba(153,102,255,0.6)', sawLBorder:   'rgba(153,102,255,1)',
 };
-
-const AREA_COLORS = ['#e8920a','#2196F3','#9C27B0','#009688','#FF5722','#607D8B','#795548','#E91E63'];
 
 // DBH class label mapping (long key → short display label)
 const DBH_CLASS_MAP = {
@@ -25,43 +26,6 @@ const DBH_CLASS_MAP = {
 };
 const DBH_CLASS_LABELS = ['Sapling','Poletimber','S Saw','M Saw','L Saw','Other'];
 
-// --- Shared chart options builder ---
-function buildChartOpts(title, xLabel, yLabel, stacked = false) {
-    return {
-        animation: false,
-        plugins: {
-            customCanvasBackgroundColor: { color: 'white' },
-            title: { display: true, text: title, font: { size: 14, weight: 'bold' }, color: '#1e2d0f' },
-            legend: { labels: { font: { size: 11 } } },
-            tooltip: { mode: 'index' }
-        },
-        responsive: true, maintainAspectRatio: true,
-        scales: {
-            x: { stacked, title: { display: true, text: xLabel, font: { size: 11 }, color: '#3d4d2e' } },
-            y: { stacked, title: { display: true, text: yLabel, font: { size: 11 }, color: '#3d4d2e' }, beginAtZero: true }
-        }
-    };
-}
-
-// Shared export options builder (fixed-size, print-quality)
-function buildExportOpts(title, xLabel, yLabel, stacked = false, horizontal = false) {
-    const opts = {
-        animation: false,
-        plugins: {
-            customCanvasBackgroundColor: { color: 'white' },
-            title: { display: true, text: title, font: { size: 18, weight: 'bold' }, color: '#000000' },
-            tooltip: { mode: 'index' }
-        },
-        responsive: false, maintainAspectRatio: false,
-        scales: {
-            x: { stacked, title: { display: true, text: horizontal ? yLabel : xLabel, font: { size: 14, weight: 'bold' }, color: '#000000' } },
-            y: { stacked, title: { display: true, text: horizontal ? xLabel : yLabel, font: { size: 14, weight: 'bold' }, color: '#000000' }, beginAtZero: true }
-        }
-    };
-    if (horizontal) opts.indexAxis = 'y';
-    return opts;
-}
-
 // Helper: resolve short label → dist entry
 function distByLabel(dist, shortLabel) {
     const key = Object.keys(DBH_CLASS_MAP).find(k => DBH_CLASS_MAP[k] === shortLabel);
@@ -69,175 +33,184 @@ function distByLabel(dist, shortLabel) {
 }
 
 // =============================================================================
-// IN-APP (RESPONSIVE) CHART GENERATORS — called from renderTallyCharts()
+// THE FOUR STAND CHARTS — one definition, used on the Tally tab and in the
+// saved Graphs sheet, so both look the same.
 // =============================================================================
+const STAND_CHART_KEYS = ['ba', 'tpa', 'volSpecies', 'volSawtimber'];
 
 /**
- * Render the tally BA/TPA/Vol charts into tallyChartsContainer.
- * Manages its own instance array; returns array of Chart instances.
- * @param {Array}  subset            - Filtered entry data
- * @param {number} baf
- * @param {string} logRule
- * @param {number} formClass
- * @param {HTMLElement} container    - DOM element to append canvases into
+ * Chart.js options. `print` = fixed size for the Graphs sheet (no animation,
+ * 1:1 pixels); otherwise responsive for the Tally tab. `dark` recolours text
+ * and grid lines for dark mode (bars keep their colours).
+ */
+function standChartOptions(title, xLabel, yLabel, { stacked = false, horizontal = false, legend = true, print = false, dark = false, scale = 1, aspect = 1.5 } = {}) {
+    const text = dark ? '#d8ecc8' : '#000000';
+    const grid = dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)';
+    const f = n => Math.round(n * scale);
+    const axis = (label) => ({
+        stacked, beginAtZero: true,
+        title: { display: true, text: label, font: { size: f(13), weight: 'bold' }, color: text },
+        ticks: { color: text, font: { size: f(11) } },
+        grid: { color: grid },
+    });
+    const opts = {
+        animation: false,
+        responsive: !print, maintainAspectRatio: !print,
+        aspectRatio: aspect,
+        plugins: {
+            customCanvasBackgroundColor: { color: dark ? '#1a2712' : 'white' },
+            title: { display: true, text: title, font: { size: f(16), weight: 'bold' }, color: text },
+            legend: { display: legend, labels: { font: { size: f(11) }, color: text } },
+            tooltip: { mode: 'index', enabled: !print },
+        },
+        scales: { x: axis(xLabel), y: axis(yLabel) },
+    };
+    if (horizontal) opts.indexAxis = 'y';
+    if (print) opts.devicePixelRatio = 1;
+    return opts;
+}
+
+/** Chart.js config for one of the four stand charts, or null when it has nothing to show. */
+function standChartConfig(key, report, opt = {}) {
+    const dist = report?.standDistribution;
+    const ss2 = report?.speciesSummary2;
+    const ds = (label, data, c) => ({ label, data, backgroundColor: CHART_COLORS[c], borderColor: CHART_COLORS[c + 'Border'], borderWidth: 1 });
+    if (key === 'ba' || key === 'tpa') {
+        if (!dist) return null;
+        const [fLeave, fCut] = key === 'ba' ? ['baSqFtPerAcreLeave', 'baSqFtPerAcreCut'] : ['tpaPerAcreLeave', 'tpaPerAcreCut'];
+        const leave = DBH_CLASS_LABELS.map(l => distByLabel(dist, l)[fLeave] || 0);
+        const cut   = DBH_CLASS_LABELS.map(l => distByLabel(dist, l)[fCut]   || 0);
+        return {
+            type: 'bar',
+            data: { labels: DBH_CLASS_LABELS, datasets: key === 'ba'
+                ? [ds('Leave BA/Acre', leave, 'leave'), ds('Cut BA/Acre', cut, 'cut')]
+                : [ds('Leave TPA', leave, 'leave'), ds('Cut TPA', cut, 'cut')] },
+            options: key === 'ba'
+                ? standChartOptions('Basal Area Distribution (sq ft/Acre)', 'DBH Class', 'BA / Acre (sq ft)', { ...opt, stacked: true })
+                : standChartOptions('Trees Per Acre Distribution', 'DBH Class', 'Trees / Acre', { ...opt, stacked: true }),
+        };
+    }
+    if (!ss2) return null;
+    if (key === 'volSpecies') {
+        const sorted = Object.entries(ss2)
+            .filter(([s, d]) => s !== 'TOTALS' && d?.totalSpeciesVolPerAcre > 0)
+            .sort(([, a], [, b]) => b.totalSpeciesVolPerAcre - a.totalSpeciesVolPerAcre);
+        if (!sorted.length) return null;
+        return {
+            type: 'bar',
+            data: { labels: sorted.map(([s]) => s), datasets: [ds('Total Vol/Acre', sorted.map(([, d]) => d.totalSpeciesVolPerAcre), 'vol')] },
+            options: standChartOptions('Volume by Species (BF/Acre)', 'Board Feet / Acre', 'Species', { ...opt, horizontal: true, legend: false }),
+        };
+    }
+    if (key === 'volSawtimber') {
+        const sorted = Object.entries(ss2)
+            .filter(([s, d]) => s !== 'TOTALS' && d && (d.volSmallPerAcre > 0 || d.volMediumPerAcre > 0 || d.volLargePerAcre > 0))
+            .map(([s, d]) => ({ species: s, small: d.volSmallPerAcre || 0, medium: d.volMediumPerAcre || 0, large: d.volLargePerAcre || 0 }))
+            .sort((a, b) => (b.small + b.medium + b.large) - (a.small + a.medium + a.large));
+        if (!sorted.length) return null;
+        return {
+            type: 'bar',
+            data: { labels: sorted.map(i => i.species), datasets: [
+                ds('S Saw (12-17.9")', sorted.map(i => i.small), 'sawS'),
+                ds('M Saw (18-23.9")', sorted.map(i => i.medium), 'sawM'),
+                ds('L Saw (24"+)', sorted.map(i => i.large), 'sawL'),
+            ]},
+            options: standChartOptions('Sawtimber Volume by Species (BF/Acre)', 'Species', 'Board Feet / Acre', { ...opt, stacked: true }),
+        };
+    }
+    return null;
+}
+
+const STAND_CHART_EMPTY = {
+    ba: 'Basal Area Distribution', tpa: 'Trees Per Acre Distribution',
+    volSpecies: 'Volume by Species — no merchantable volume', volSawtimber: 'Sawtimber Volume by Species — no sawtimber volume',
+};
+
+/**
+ * Renders the four stand charts into the Tally tab container.
  * @returns {Chart[]} instances for later .destroy()
  */
 function renderTallyCharts(subset, baf, logRule, formClass, container) {
     container.innerHTML = '';
     const instances = [];
-
     if (!subset?.length) {
         container.innerHTML = '<p class="placeholder-msg">Add data to see charts.</p>';
         return instances;
     }
-
+    if (typeof Chart === 'undefined') {
+        container.innerHTML = '<p class="placeholder-msg">Charts could not load.</p>';
+        return instances;
+    }
     const report = calculateForestryReport(subset, baf, logRule, formClass);
     if (!report?.summary?.numberOfPlots) {
         container.innerHTML = '<p class="placeholder-msg">Need at least 1 plot to generate charts.</p>';
         return instances;
     }
-
-    const baCan  = document.createElement('canvas'); container.appendChild(baCan);
-    const tpaCan = document.createElement('canvas'); container.appendChild(tpaCan);
-    const volCan = document.createElement('canvas'); container.appendChild(volCan);
-
-    const baChart  = generateBaChart(report, baCan);   if (baChart)  instances.push(baChart);
-    const tpaChart = generateTpaChart(report, tpaCan);  if (tpaChart) instances.push(tpaChart);
-    const volChart = generateVolSpeciesChart(report, volCan); if (volChart) instances.push(volChart);
-
+    const dark = document.body.classList.contains('dark-mode');
+    const grid = document.createElement('div');
+    grid.className = 'stand-charts-grid';
+    container.appendChild(grid);
+    for (const key of STAND_CHART_KEYS) {
+        const cell = document.createElement('div');
+        cell.className = 'stand-chart-cell';
+        grid.appendChild(cell);
+        const cfg = standChartConfig(key, report, { dark, aspect: (container.clientWidth || 600) < 560 ? 1.05 : 1.5 });
+        if (!cfg) { cell.innerHTML = `<p class="placeholder-msg">${STAND_CHART_EMPTY[key]}</p>`; continue; }
+        const canvas = document.createElement('canvas');
+        cell.appendChild(canvas);
+        try { instances.push(new Chart(canvas, cfg)); } catch (e) { console.error('Chart error', key, e); }
+    }
     return instances;
 }
 
-function generateBaChart(report, canvas) {
-    if (!canvas || !report?.standDistribution) return null;
-    const dist = report.standDistribution;
-    const leaveData = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).baSqFtPerAcreLeave || 0);
-    const cutData   = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).baSqFtPerAcreCut   || 0);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels: DBH_CLASS_LABELS, datasets: [
-                { label: 'Leave BA/Acre', data: leaveData, backgroundColor: CHART_COLORS.leave, borderColor: CHART_COLORS.leaveBorder, borderWidth: 1 },
-                { label: 'Cut BA/Acre',   data: cutData,   backgroundColor: CHART_COLORS.cut,   borderColor: CHART_COLORS.cutBorder,   borderWidth: 1 }
-            ]},
-            options: buildChartOpts('Basal Area Distribution (sq ft/Acre)', 'DBH Class', 'BA/Acre (sq ft)', true)
-        });
-    } catch(e) { return null; }
-}
-
-function generateTpaChart(report, canvas) {
-    if (!canvas || !report?.standDistribution) return null;
-    const dist = report.standDistribution;
-    const leaveData = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).tpaPerAcreLeave || 0);
-    const cutData   = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).tpaPerAcreCut   || 0);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels: DBH_CLASS_LABELS, datasets: [
-                { label: 'Leave TPA', data: leaveData, backgroundColor: CHART_COLORS.leave, borderColor: CHART_COLORS.leaveBorder, borderWidth: 1 },
-                { label: 'Cut TPA',   data: cutData,   backgroundColor: CHART_COLORS.cut,   borderColor: CHART_COLORS.cutBorder,   borderWidth: 1 }
-            ]},
-            options: buildChartOpts('Trees Per Acre Distribution', 'DBH Class', 'Trees/Acre', true)
-        });
-    } catch(e) { return null; }
-}
-
-function generateVolSpeciesChart(report, canvas) {
-    if (!canvas || !report?.speciesSummary2) return null;
-    const sorted = Object.entries(report.speciesSummary2)
-        .filter(([s, d]) => s !== 'TOTALS' && d?.totalSpeciesVolPerAcre > 0)
-        .sort(([, a], [, b]) => b.totalSpeciesVolPerAcre - a.totalSpeciesVolPerAcre);
-    if (!sorted.length) return null;
-    const labels = sorted.map(([s]) => s);
-    const data   = sorted.map(([, d]) => d.totalSpeciesVolPerAcre);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels, datasets: [{ label: 'Vol/Acre (BF)', data, backgroundColor: CHART_COLORS.blue, borderColor: CHART_COLORS.blueBorder, borderWidth: 1 }]},
-            options: {
-                ...buildChartOpts('Volume by Species (BF/Acre)', 'Species', 'Board Feet/Acre'),
-                indexAxis: 'y',
-                plugins: {
-                    ...buildChartOpts('Volume by Species (BF/Acre)', 'Species', 'Board Feet/Acre').plugins,
-                    legend: { display: false }
-                }
-            }
-        });
-    } catch(e) { return null; }
-}
-
 // =============================================================================
-// EXPORT-QUALITY (FIXED-SIZE) CHART GENERATORS — called from CSV export
+// GRAPHS SHEET — the four stand charts for one Area on a single letter-size
+// landscape page (11 x 8.5 in at 200 dpi = 2200 x 1700 px) for the ZIP export.
 // =============================================================================
+const SHEET_W = 2200, SHEET_H = 1700;
 
-function generateBaChartExport(report, canvas) {
-    if (!canvas || !report?.standDistribution) return null;
-    const dist = report.standDistribution;
-    const leaveData = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).baSqFtPerAcreLeave || 0);
-    const cutData   = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).baSqFtPerAcreCut   || 0);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels: DBH_CLASS_LABELS, datasets: [
-                { label: 'Leave BA/Acre', data: leaveData, backgroundColor: 'rgba(75,192,192,0.6)', borderColor: 'rgba(75,192,192,1)', borderWidth: 1 },
-                { label: 'Cut BA/Acre',   data: cutData,   backgroundColor: 'rgba(255,99,132,0.6)', borderColor: 'rgba(255,99,132,1)', borderWidth: 1 }
-            ]},
-            options: buildExportOpts('Basal Area Distribution (SqFt/Acre)', 'BA / Acre (Sq Ft)', 'DBH Class', true)
-        });
-    } catch(e) { return null; }
-}
+function buildGraphsSheetCanvas(report, areaLetter, projectName, logRule, formClass, baf) {
+    const sheet = document.createElement('canvas');
+    sheet.width = SHEET_W; sheet.height = SHEET_H;
+    const g = sheet.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, SHEET_W, SHEET_H);
 
-function generateTpaChartExport(report, canvas) {
-    if (!canvas || !report?.standDistribution) return null;
-    const dist = report.standDistribution;
-    const leaveData = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).tpaPerAcreLeave || 0);
-    const cutData   = DBH_CLASS_LABELS.map(l => distByLabel(dist, l).tpaPerAcreCut   || 0);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels: DBH_CLASS_LABELS, datasets: [
-                { label: 'Leave TPA', data: leaveData, backgroundColor: 'rgba(75,192,192,0.6)', borderColor: 'rgba(75,192,192,1)', borderWidth: 1 },
-                { label: 'Cut TPA',   data: cutData,   backgroundColor: 'rgba(255,99,132,0.6)', borderColor: 'rgba(255,99,132,1)', borderWidth: 1 }
-            ]},
-            options: buildExportOpts('Trees Per Acre Distribution', 'Trees / Acre', 'DBH Class', true)
-        });
-    } catch(e) { return null; }
-}
+    // Header band
+    const M = 70, HEAD = 120;
+    g.fillStyle = '#2d5016'; g.fillRect(0, 0, SHEET_W, HEAD);
+    g.fillStyle = '#ffffff'; g.textBaseline = 'middle';
+    g.font = 'bold 46px Arial, Helvetica, sans-serif'; g.textAlign = 'left';
+    g.fillText(`${projectName} — Area ${areaLetter} — Stand Graphs`, M, HEAD / 2);
+    g.font = '28px Arial, Helvetica, sans-serif'; g.textAlign = 'right';
+    const rule = logRule === 'Doyle' ? `Doyle FC${formClass}` : logRule === 'International' ? 'International 1/4"' : logRule;
+    g.fillText(`BAF ${baf} · ${rule} · ${new Date().toLocaleDateString()}`, SHEET_W - M, HEAD / 2);
 
-function generateVolSpeciesChartExport(report, canvas) {
-    if (!canvas || !report?.speciesSummary2) return null;
-    const sorted = Object.entries(report.speciesSummary2)
-        .filter(([s, d]) => s !== 'TOTALS' && d?.totalSpeciesVolPerAcre > 0)
-        .sort(([, a], [, b]) => b.totalSpeciesVolPerAcre - a.totalSpeciesVolPerAcre);
-    const labels = sorted.map(([s]) => s);
-    const data   = sorted.map(([, d]) => d.totalSpeciesVolPerAcre);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels, datasets: [{ label: 'Total Vol/Acre', data, backgroundColor: 'rgba(54,162,235,0.6)', borderColor: 'rgba(54,162,235,1)', borderWidth: 1 }]},
-            options: { ...buildExportOpts('Volume by Species (BF/Acre)', 'Board Feet / Acre', 'Species', false, true), plugins: { ...buildExportOpts().plugins, legend: { display: false } } }
-        });
-    } catch(e) { return null; }
-}
+    // 2 x 2 grid of charts
+    const gap = 40, top = HEAD + 40, foot = 60;
+    const cw = Math.floor((SHEET_W - 2 * M - gap) / 2);
+    const ch = Math.floor((SHEET_H - top - foot - gap) / 2);
+    STAND_CHART_KEYS.forEach((key, i) => {
+        const x = M + (i % 2) * (cw + gap), y = top + Math.floor(i / 2) * (ch + gap);
+        g.strokeStyle = '#cfd8c4'; g.lineWidth = 2; g.strokeRect(x - 1, y - 1, cw + 2, ch + 2);
+        const cfg = typeof Chart !== 'undefined' ? standChartConfig(key, report, { print: true, scale: 1.45 }) : null;
+        if (!cfg) {
+            g.fillStyle = '#6c7a55'; g.font = '30px Arial, Helvetica, sans-serif'; g.textAlign = 'center';
+            g.fillText(STAND_CHART_EMPTY[key], x + cw / 2, y + ch / 2);
+            return;
+        }
+        const c = document.createElement('canvas');
+        c.width = cw; c.height = ch;
+        let inst = null;
+        try {
+            inst = new Chart(c, cfg);
+            g.drawImage(c, x, y, cw, ch);
+        } catch (e) { console.error('Graphs sheet chart error', key, e); }
+        try { inst?.destroy(); } catch (e) {}
+    });
 
-function generateVolSawtimberChartExport(report, canvas) {
-    if (!canvas || !report?.speciesSummary2) return null;
-    const sorted = Object.entries(report.speciesSummary2)
-        .filter(([s, d]) => s !== 'TOTALS' && d && (d.volSmallPerAcre > 0 || d.volMediumPerAcre > 0 || d.volLargePerAcre > 0))
-        .map(([s, d]) => ({ species: s, small: d.volSmallPerAcre || 0, medium: d.volMediumPerAcre || 0, large: d.volLargePerAcre || 0, totalSaw: (d.volSmallPerAcre || 0) + (d.volMediumPerAcre || 0) + (d.volLargePerAcre || 0) }))
-        .sort((a, b) => b.totalSaw - a.totalSaw);
-    const labels = sorted.map(i => i.species);
-    try {
-        return new Chart(canvas, {
-            type: 'bar',
-            data: { labels, datasets: [
-                { label: 'S Saw Vol/Acre (12-17.9")', data: sorted.map(i => i.small),  backgroundColor: 'rgba(255,206,86,0.6)',  borderColor: 'rgba(255,206,86,1)',  borderWidth: 1 },
-                { label: 'M Saw Vol/Acre (18-23.9")', data: sorted.map(i => i.medium), backgroundColor: 'rgba(255,159,64,0.6)',  borderColor: 'rgba(255,159,64,1)',  borderWidth: 1 },
-                { label: 'L Saw Vol/Acre (24"+)',      data: sorted.map(i => i.large),  backgroundColor: 'rgba(153,102,255,0.6)', borderColor: 'rgba(153,102,255,1)', borderWidth: 1 }
-            ]},
-            options: buildExportOpts('Sawtimber Volume Distribution by Species (BF/Acre)', 'Board Feet / Acre', 'Species', true)
-        });
-    } catch(e) { return null; }
+    g.fillStyle = '#6c7a55'; g.font = '24px Arial, Helvetica, sans-serif'; g.textAlign = 'center';
+    g.fillText('Generated by TimberTally · per-acre values · Leave = trees not marked to cut', SHEET_W / 2, SHEET_H - foot / 2);
+    return sheet;
 }
 
 // =============================================================================

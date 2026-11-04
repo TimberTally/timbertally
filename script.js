@@ -117,7 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const logRuleSelect       = document.getElementById('logRuleSelect');
     const formClassSelect     = document.getElementById('formClassSelect');
     const formClassGroup      = document.getElementById('formClassGroup');
-    const generateGraphsSelect = document.getElementById('generateGraphsSelect');
     const settingsFeedback    = document.getElementById('settingsFeedback');
     const manualUpdateCheckBtn = document.getElementById('manualUpdateCheckBtn');
     const updateCheckStatus   = document.getElementById('updateCheckStatus');
@@ -153,7 +152,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const stockingResults     = document.getElementById('stockingResults');
     const stockingStatsTable  = document.getElementById('stockingStatsTable');
     const stockingNoData      = document.getElementById('stockingNoData');
-    const zipExportSelect     = document.getElementById('zipExportSelect');
 
     // --- Storage Keys ---
     // Everything is stored through storage.js (window.TTStore) under "tt3." keys.
@@ -178,8 +176,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentBaf          = 10;
     let currentLogRule      = 'Doyle';
     let currentFormClass    = 78;
-    let currentGenerateGraphs = 'No';
-    let currentZipExport    = 'No';
     let currentDarkMode     = 'off';
     let deferredInstallPrompt = null;   // holds the beforeinstallprompt event
     let currentSpeciesList  = [];
@@ -460,8 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveSettings() {
         Store.writeJSON(SETTINGS_STORAGE_KEY, {
             baf: currentBaf, logRule: currentLogRule,
-            formClass: currentFormClass, generateGraphs: currentGenerateGraphs,
-            zipExport: currentZipExport, darkMode: currentDarkMode
+            formClass: currentFormClass, darkMode: currentDarkMode
         });
     }
 
@@ -475,14 +470,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentLogRule = ['Doyle','Scribner','International'].includes(s.logRule) ? s.logRule : 'Doyle';
                     currentFormClass = parseInt(s.formClass, 10) || 78;
                     if (!VALID_DOYLE_FC.includes(currentFormClass)) currentFormClass = 78;
-                    currentGenerateGraphs = s.generateGraphs === 'Yes' ? 'Yes' : 'No';
-                    currentZipExport = s.zipExport === 'Yes' ? 'Yes' : 'No';
                     currentDarkMode = ['off','on','system'].includes(s.darkMode) ? s.darkMode : 'off';
                     if (bafSelect) bafSelect.value = String(currentBaf);
                     if (logRuleSelect) logRuleSelect.value = currentLogRule;
                     if (formClassSelect) formClassSelect.value = String(currentFormClass);
-                    if (generateGraphsSelect) generateGraphsSelect.value = currentGenerateGraphs;
-                    if (zipExportSelect) zipExportSelect.value = currentZipExport;
                     if (darkModeSelect) darkModeSelect.value = currentDarkMode;
                 } else applyDefaultSettings();
             } else applyDefaultSettings();
@@ -495,12 +486,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyDefaultSettings() {
         currentBaf = 10; currentLogRule = 'Doyle'; currentFormClass = 78;
-        currentGenerateGraphs = 'No'; currentZipExport = 'No'; currentDarkMode = 'off';
+        currentDarkMode = 'off';
         if (bafSelect) bafSelect.value = '10';
         if (logRuleSelect) logRuleSelect.value = 'Doyle';
         if (formClassSelect) formClassSelect.value = '78';
-        if (generateGraphsSelect) generateGraphsSelect.value = 'No';
-        if (zipExportSelect) zipExportSelect.value = 'No';
         if (darkModeSelect) darkModeSelect.value = 'off';
         saveSettings();
     }
@@ -513,15 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateSaveBtnLabel() {
-        if (saveCsvBtn) {
-            if (currentZipExport === 'Yes') {
-                saveCsvBtn.textContent = '\uD83D\uDCBE Save ZIP';
-            } else if (currentGenerateGraphs === 'Yes') {
-                saveCsvBtn.textContent = '\uD83D\uDCBE Save CSV & Graphs';
-            } else {
-                saveCsvBtn.textContent = '\uD83D\uDCBE Save CSV';
-            }
-        }
+        if (saveCsvBtn) saveCsvBtn.textContent = '\uD83D\uDCBE Save ZIP';
     }
 
     // ============================================================
@@ -1035,81 +1016,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // CSV EXPORT
     // ============================================================
+    /**
+     * Save: one ZIP with everything for the open project —
+     *   Area CSVs (trees, tally, per-plot volumes, forestry report), one per Area
+     *   Area Summary Reports (PNG), one per Area
+     *   Area Graphs sheets (the four stand charts on one 11 x 8.5 in page), one per Area
+     *   the Gingrich stocking chart with every Area (PNG)
+     *   Area notes (.txt), when any were written
+     * On a phone the ZIP goes to the share sheet (Files, email, Drive) in one step.
+     */
     async function generateAndDownloadCsv() {
         if (!collectedData.length) { showFeedback("No data to save.", true); return; }
+        if (typeof JSZip === 'undefined') { showFeedback("The ZIP tool did not load. Reload the app and try again.", true, 6000); return; }
         const selBaf = currentBaf, selRule = currentLogRule, selFc = currentFormClass;
-        const graphsEnabled = currentGenerateGraphs === 'Yes';
-        const zipMode       = currentZipExport === 'Yes';
-        showFeedback(zipMode ? "Building ZIP..." : "Generating CSV(s)...", false, 10000);
+        if (saveCsvBtn) saveCsvBtn.disabled = true;
+        showFeedback("Building ZIP...", false, 10000);
+        const zip = new JSZip();
+        const pause = () => new Promise(r => setTimeout(r, 0)); // keep the screen responsive between pages
 
-        let zip = null;
-        if (zipMode) {
-            if (typeof JSZip === 'undefined') {
-                showFeedback("JSZip not loaded. Check internet connection.", true, 5000);
-                return;
-            }
-            zip = new JSZip();
-        }
-
-        function triggerDownload(url, filename) {
-            const a = document.createElement('a');
-            a.href = url; a.download = filename;
-            a.style.visibility = 'hidden';
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        }
-
-        async function handleTextFile(content, filename) {
-            if (zipMode) {
-                zip.file(filename, content);
-            } else {
-                const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                triggerDownload(url, filename);
-                URL.revokeObjectURL(url);
-                await new Promise(r => setTimeout(r, 250));
-            }
-        }
-
-        async function handleTxtFile(content, filename) {
-            if (zipMode) {
-                zip.file(filename, content);
-            } else {
-                const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                triggerDownload(url, filename);
-                URL.revokeObjectURL(url);
-            }
-        }
-
-        async function handleChartPng(genFn, reportDataArg, filename) {
-            const c = document.createElement('canvas'); c.width=800; c.height=450;
-            const inst = genFn(reportDataArg, c);
-            if (!inst) return;
-            await new Promise(r => setTimeout(r, 250));
-            try {
-                const dataUrl = c.toDataURL('image/png');
-                if (zipMode) {
-                    zip.file(filename, dataUrl.split(',')[1], { base64: true });
-                } else {
-                    triggerDownload(dataUrl, filename);
-                    await new Promise(r => setTimeout(r, 250));
-                }
-            } catch(e) {}
-            try { inst.destroy(); } catch(e) {}
-        }
-
-        async function handleCanvasPng(canvas, filename) {
+        async function addCanvasPng(canvas, filename) {
             if (!canvas) return;
-            await new Promise(r => setTimeout(r, 100));
-            try {
-                const dataUrl = canvas.toDataURL('image/png');
-                if (zipMode) {
-                    zip.file(filename, dataUrl.split(',')[1], { base64: true });
-                } else {
-                    triggerDownload(dataUrl, filename);
-                    await new Promise(r => setTimeout(r, 250));
-                }
-            } catch(e) { console.error('Canvas PNG error:', e); }
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            if (blob) zip.file(filename, blob);
         }
 
         try {
@@ -1120,38 +1048,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }, {});
             const sortedAreas = Object.keys(grouped).sort();
             if (!sortedAreas.length) { showFeedback("No areas found.", true); return; }
-            const ts = new Date().toISOString().slice(0,19).replace(/[-T:]/g,"");
-            const projBase = projectNameInput?.value.trim().replace(/[^a-z0-9_\-]/gi,'_') || 'TimberTally';
+            const d = new Date(), pad = n => String(n).padStart(2, '0');
+            const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+            const projName = projectNameInput?.value.trim() || 'Untitled';
+            const projBase = projName.replace(/[^a-z0-9_\-]/gi, '_') || 'TimberTally';
+            const ruleP = selRule.substring(0, 4);
+            const fcP = selRule === 'Doyle' ? `FC${selFc}` : '';
 
             for (const [i, areaLetter] of sortedAreas.entries()) {
                 const areaData = grouped[areaLetter];
-                showFeedback(`Generating Area ${areaLetter} (${i+1}/${sortedAreas.length})...`, false, 6000);
+                showFeedback(`Area ${areaLetter} (${i + 1}/${sortedAreas.length})...`, false, 10000);
+                await pause();
                 let reportData = null, tallyData = null, plotStats = null;
                 try { reportData = calculateForestryReport(areaData, selBaf, selRule, selFc); } catch(e) {}
                 try { tallyData = generateTallyData(areaData); } catch(e) {}
                 try { plotStats = calculatePlotStats(areaData, selBaf, selRule, selFc); } catch(e) {}
+                const nameBase = `${projBase}_Area${areaLetter}`;
 
-                const nameBase = `${projBase}_Area${areaLetter}_${ts}`;
-
-                if (graphsEnabled && reportData?.summary?.numberOfPlots > 0) {
-                    await handleChartPng(generateBaChartExport,          reportData, `${nameBase}_BA_Dist.png`);
-                    await handleChartPng(generateTpaChartExport,         reportData, `${nameBase}_TPA_Dist.png`);
-                    await handleChartPng(generateVolSpeciesChartExport,  reportData, `${nameBase}_Vol_Species.png`);
-                    await handleChartPng(generateVolSawtimberChartExport,reportData, `${nameBase}_Vol_Sawtimber.png`);
-
+                if (reportData?.summary?.numberOfPlots > 0) {
                     try {
-                        const allAreaStats = calculateStandStocking(collectedData, selBaf);
-                        if (allAreaStats?.length) {
-                            const gCanvas = await buildGingrichCanvas(allAreaStats);
-                            await handleCanvasPng(gCanvas, `${nameBase}_Gingrich_Stocking.png`);
-                        }
-                    } catch(e) { console.error('Gingrich export error:', e); }
-
-                    try {
-                        const projName = projectNameInput?.value.trim() || 'Untitled';
-                        const summaryCanvas = buildSummaryReportCanvas(reportData, plotStats, areaLetter, projName, selRule, selFc, selBaf);
-                        await handleCanvasPng(summaryCanvas, `${nameBase}_Summary_Report.png`);
+                        await addCanvasPng(buildSummaryReportCanvas(reportData, plotStats, areaLetter, projName, selRule, selFc, selBaf), `${nameBase}_Summary_Report.png`);
                     } catch(e) { console.error('Summary report export error:', e); }
+                    await pause();
+                    try {
+                        await addCanvasPng(buildGraphsSheetCanvas(reportData, areaLetter, projName, selRule, selFc, selBaf), `${nameBase}_Graphs.png`);
+                    } catch(e) { console.error('Graphs sheet export error:', e); }
                 }
 
                 // Build CSV
@@ -1195,34 +1116,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else plotCsv += "No plot data.\n";
 
                 const reportCsv = reportData ? (() => { try { return formatReportForCsv(reportData); } catch(e) { return "\n--- FORESTRY REPORT DATA ---\nError formatting report.\n"; } })() : "\n--- FORESTRY REPORT DATA ---\nReport failed.\n";
-
-                const ruleP = selRule.substring(0,4);
-                const fcP = selRule==='Doyle' ? `FC${selFc}` : '';
-                const csvFilename = `${projBase}_Area${areaLetter}_${ruleP}${fcP}_BAF${selBaf}_${ts}.csv`;
-                await handleTextFile(raw + tallyCsv + plotCsv + reportCsv, csvFilename);
+                zip.file(`${nameBase}_${ruleP}${fcP}_BAF${selBaf}.csv`, raw + tallyCsv + plotCsv + reportCsv);
             }
+
+            // Gingrich stocking chart: every Area on one chart
+            try {
+                const allAreaStats = calculateStandStocking(collectedData, selBaf);
+                if (allAreaStats?.length) await addCanvasPng(await buildGingrichCanvas(allAreaStats), `${projBase}_Stocking_Chart_All_Areas.png`);
+            } catch(e) { console.error('Gingrich export error:', e); }
 
             // Area notes
             const notesText = getAreaNotesText();
             if (notesText) {
-                const header = `TimberTally Area Notes\nProject: ${projectNameInput?.value.trim() || 'Untitled'}\nExported: ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
-                await handleTxtFile(header + notesText, `${projBase}_AreaNotes_${ts}.txt`);
+                const header = `TimberTally Area Notes\nProject: ${projName}\nExported: ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
+                zip.file(`${projBase}_Area_Notes.txt`, header + notesText);
             }
 
-            if (zipMode) {
-                showFeedback("Compressing ZIP...", false, 8000);
-                const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-                const zipUrl = URL.createObjectURL(zipBlob);
-                triggerDownload(zipUrl, `${projBase}_${ts}.zip`);
-                URL.revokeObjectURL(zipUrl);
-                showFeedback(`ZIP saved: ${projBase}_${ts}.zip`, false, 4000);
-            } else {
-                const graphMsg = graphsEnabled ? ' & Graphs' : '';
-                showFeedback(`CSV${graphMsg} saved for Area${sortedAreas.length>1?'s':''}: ${sortedAreas.join(', ')}`, false, 4000);
-            }
+            showFeedback("Compressing ZIP...", false, 10000);
+            const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+            const zipName = `${projBase}_TimberTally_${ts}.zip`;
+            const r = await Store.saveFile(zipBlob, zipName, { description: 'ZIP file', accept: { 'application/zip': ['.zip'] } });
+            if (r === 'cancelled') showFeedback('Save cancelled.', false, 3000);
+            else showFeedback(`✓ ZIP saved: ${zipName} (${plural(sortedAreas.length, 'Area')})`, false, 5000);
         } catch(err) {
             console.error('Export error:', err);
             showFeedback(`Save Error: ${err.message||'Unknown'}`, true, 6000);
+        } finally {
+            if (saveCsvBtn) saveCsvBtn.disabled = !collectedData.length;
         }
     }
     // ============================================================
@@ -1726,7 +1646,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bafSelect) bafSelect.addEventListener('change', e => { currentBaf = parseInt(e.target.value,10); saveSettings(); showSettingsFeedback(`BAF = ${currentBaf}`); calculateAndDisplayNeededPlots(); updateBorderlineText(); });
     if (logRuleSelect) logRuleSelect.addEventListener('change', e => { currentLogRule = e.target.value; saveSettings(); showSettingsFeedback(`Rule: ${currentLogRule}`); checkAndSetLogsForDbh(); calculateAndDisplayNeededPlots(); updateFormClassVisibility(); });
     if (formClassSelect) formClassSelect.addEventListener('change', e => { currentFormClass = parseInt(e.target.value,10); saveSettings(); showSettingsFeedback(`Doyle FC: ${currentFormClass}`); calculateAndDisplayNeededPlots(); });
-    if (generateGraphsSelect) generateGraphsSelect.addEventListener('change', e => { currentGenerateGraphs = e.target.value; saveSettings(); showSettingsFeedback(`Graphs: ${currentGenerateGraphs}`); updateSaveBtnLabel(); });
 
     // Dark mode
     if (darkModeSelect) darkModeSelect.addEventListener('change', e => {
@@ -1760,7 +1679,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (showInfoBtn) showInfoBtn.addEventListener('click', () => window.open('./README.md', '_blank', 'noopener'));
-    if (zipExportSelect) zipExportSelect.addEventListener('change', e => { currentZipExport = e.target.value; saveSettings(); showSettingsFeedback(`ZIP export: ${currentZipExport}`); updateSaveBtnLabel(); });
 
     // Species management
     if (addSpeciesBtn) addSpeciesBtn.addEventListener('click', () => {

@@ -265,7 +265,8 @@
     }
 
     /** Phones: share sheet (Save to Files, email…). Computers: Save dialog, else a download. */
-    async function saveFile(blob, filename) {
+    /** Saves a file: share sheet on a phone, save dialog on a computer, else a download. `types` names the file type for the dialog. */
+    async function saveFile(blob, filename, types = { description: 'TimberTally backup', accept: { 'application/json': ['.json'] } }) {
         const touch = window.matchMedia?.('(pointer: coarse)').matches;
         try {
             const file = new File([blob], filename, { type: blob.type });
@@ -278,7 +279,7 @@
         }
         if (!touch && window.showSaveFilePicker) {
             try {
-                const handle = await window.showSaveFilePicker({ suggestedName: filename, id: 'timbertally-backups', types: [{ description: 'TimberTally backup', accept: { 'application/json': ['.json'] } }] });
+                const handle = await window.showSaveFilePicker({ suggestedName: filename, id: 'timbertally-backups', types: [types] });
                 const out = await handle.createWritable();
                 await out.write(blob);
                 await out.close();
