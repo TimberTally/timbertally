@@ -230,20 +230,31 @@
     <span class="formula">CV (%) = (Std Dev ÷ Mean) × 100</span>
 
     <h2>7. Plots Needed Estimate</h2>
-    <p>The "Plots Needed" counter uses the current Area's CV to estimate how many total plots would be required to reach ±10% or ±20% precision (t = 2, ~95% confidence):</p>
+    <p>The "Plots Needed" counter uses the current Area's CV to estimate how many total plots would be required to reach ±10%, ±20% or ±30% precision (t = 2, ~95% confidence); a ✓ means the Area already has enough:</p>
     <span class="formula">n = ⌈(t × CV ÷ Desired Error%)²⌉</span>
     <p>Requires at least 2 plots with data in the current Area. A high CV means more plots are needed for the same precision.</p>
-
-</section>
+    
+    <h2>8. Gingrich Stocking</h2>
+    <p>Stocking for upland hardwoods follows Gingrich (1967). Percent of A-level stocking is:</p>
+    <span class="formula">Stocking % = −0.00507 × N + 0.01698 × ΣD + 0.00317 × ΣD²</span>
+    <p>where N = trees/acre, ΣD = sum of diameters per acre and ΣD² = sum of squared diameters per acre. It is read on the chart basis — from trees/acre and the QMD, as if every tree were the QMD — so the percent, the level and the plotted point always agree, and match a reading by hand.</p>
+    <ul>
+    <li><strong>100% or more</strong> — Overstocked (on or above the A-line).</li>
+    <li><strong>60% to 100%</strong> — Fully stocked (between the B-line and A-line).</li>
+    <li><strong>Below 60%</strong> — Understocked (below the B-line).</li>
+    </ul>
+    <p>Each Area is plotted as the stand as cruised; when trees are marked Cut, an arrow points to the residual (Leave) stand.</p>
+    
+    </section>
 
 <!-- ================================================================
      PAGE 2: CSV OUTPUT
 ================================================================ -->
 <section class="page" id="csv">
 
-    <p>Each export generates one CSV file per Area Letter, named <code>ProjectName_AreaX_Rule_BAF_Timestamp.csv</code>. All calculations in a given file use only data from that Area and the settings active at export time. If stand notes exist, a separate <code>_StandNotes.txt</code> is also downloaded.</p>
+    <p><strong>Save ZIP</strong> puts everything for the project in one <code>.zip</code> file: for each Area a CSV (<code>ProjectName_AreaX_Rule_BAF.csv</code>), a Summary Report and a Graphs page (the four stand charts on one 11 × 8.5 in landscape page); one Gingrich stocking chart with every Area; and the Area notes as a <code>.txt</code> file when any were written. All calculations in a CSV use only that Area's data and the Settings at the time of saving.</p>
 
-    <div class="note">If you collected data across multiple Areas (e.g., A and B), you will receive a separate CSV for each one.</div>
+    <div class="note">If you collected data across multiple Areas (e.g., A and B), the ZIP holds a separate CSV, Summary Report and Graphs page for each one.</div>
 
     <h2><span class="section-chip">1</span> Raw Data</h2>
     <p>Every tree entry for this Area, one row each. Columns: <code>PlotNumber</code>, <code>Area</code>, <code>DBH</code>, <code>Species</code>, <code>Logs</code>, <code>Cut</code>, <code>UGS</code>, <code>Notes</code>, <code>Latitude</code>, <code>Longitude</code>. These are your direct inputs — not calculated values.</p>
@@ -329,20 +340,20 @@
     <p>Returns: <code>{ meanV, stdDevV, cvV, numValidPlots, plotVolumes }</code> or null if no valid plots.</p>
 
     <h2>calculateStandStocking(collectedData, baf)</h2>
-    <p>For each Area: counts plots, sums TPA and BA contributions split by Cut/Leave. Divides by plot count to get TPA/Acre and BA/Acre (Total, Cut, Leave). Also computes QMD for each. Returns array of area stat objects used by the Gingrich stocking chart (TPA on X-axis, BA/Acre on Y-axis).</p>
+    <p>For each Area: counts plots (empty plots included), and for every tally tree adds its TPA (<code>BAF ÷ BA</code>) and TPA × DBH² to the Total and to Cut or Leave. Dividing by the plot count gives TPA/Acre and ΣD²/Acre; then <code>BA/Acre = BA_CONST × ΣD²/Acre</code>, <code>QMD = √(ΣD²/Acre ÷ TPA/Acre)</code>, and stocking % from <code>gingrichPercent(TPA, QMD)</code> (−0.00507·N + 0.01698·N·D + 0.00317·N·D²). Level: ≥100% Overstocked, ≥60% Fully stocked, else Understocked. The chart's A- and B-lines are the 100% and 60% curves solved for BA at each TPA (<code>gingrichBaAt</code>).</p>
 
     <h2>calculateAndDisplayNeededPlots (inline in script.js)</h2>
-    <span class="formula">n = ⌈(2 × CV ÷ E)²⌉ where E = 10 (±10%) or 20 (±20%)</span>
+    <span class="formula">n = ⌈(2 × CV ÷ E)²⌉ where E = 10, 20 or 30 (±10%, ±20%, ±30%)</span>
     <p>Filters data to current Area only. Requires numPlots ≥ 2 and CV &gt; 0.</p>
 
-    <h2>generateAndDownloadCsv (script.js)</h2>
+    <h2>generateAndDownloadCsv (script.js) — Save ZIP</h2>
     <ol>
         <li>Group all data by Area Letter.</li>
         <li>For each Area: run <code>calculateForestryReport</code>, <code>generateTallyData</code>, <code>calculatePlotStats</code>.</li>
-        <li>Assemble raw data rows, tally rows, plot stats rows, and formatted report sections into one CSV string.</li>
-        <li>Trigger download as <code>ProjectName_AreaX_Rule_BAF_Timestamp.csv</code>.</li>
-        <li>If Export Graphs = Yes: render BA Dist, TPA Dist, Vol by Species, Sawtimber Vol, Gingrich Stocking, and Summary Report PNG; trigger each as a download. Summary Report PNG is drawn at 3× scale (4200×2700 px) via the Canvas 2D API.</li>
-        <li>If stand notes exist, download as a <code>.txt</code> file.</li>
+        <li>Draw the Summary Report and the Graphs page (the four stand charts), each one 11 × 8.5 in landscape page (2200×1700 px, 200 dpi), and add both PNGs to the ZIP.</li>
+        <li>Assemble raw data rows, tally rows, plot stats rows, and formatted report sections into one CSV and add it to the ZIP.</li>
+        <li>Add one Gingrich stocking chart with every Area, and the Area notes <code>.txt</code> if any.</li>
+        <li>Save the ZIP once: the share sheet on a phone, a download on a computer.</li>
     </ol>
 
 </section>

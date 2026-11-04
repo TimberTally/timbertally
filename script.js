@@ -260,6 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
         closeAreaNotes(); closePlots();
         currentProject = p;
         if (!p.areaNotes || typeof p.areaNotes !== 'object') p.areaNotes = {};
+        if (!p.areaRegen || typeof p.areaRegen !== 'object') p.areaRegen = {};
         Store.setCurrentId(p.id);
         collectedData = Array.isArray(p.data) ? p.data : [];
         collectedData.forEach((e, i) => { if (!e.id) e.id = Date.now() + i; });
@@ -711,7 +712,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (name) name.textContent = currentProject?.name || '';
         if (line) line.textContent = `Area ${areaLetters[currentAreaIndex]} · Plot ${currentPlotNumber}`;
         const dot = document.querySelector('#areaNotesBtn .tool-dot');
-        const has = !!String(currentProject?.areaNotes?.[areaLetters[currentAreaIndex]] || '').trim();
+        const cur = areaLetters[currentAreaIndex];
+        const has = !!String(currentProject?.areaNotes?.[cur] || '').trim() || !!currentProject?.areaRegen?.[cur];
         if (dot) dot.hidden = !has;
         document.getElementById('areaNotesBtn')?.classList.toggle('has-notes', has);
     }
@@ -784,6 +786,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const areaData = collectedData.filter(e => e.areaLetter === letter);
         const plotCount = new Set(areaData.map(e => e.plotNumber).filter(p => p != null)).size;
         const stats = calculatePlotStats(areaData, currentBaf, currentLogRule, currentFormClass);
+
+        // Sampling error and 95% confidence interval for the Area's volume (t = 2).
+        const samplingLine = document.getElementById('samplingLine');
+        if (samplingLine) {
+            if (stats && plotCount >= 2 && stats.meanV > 0) {
+                const se = stats.stdDevV / Math.sqrt(stats.numValidPlots);
+                const pct = (2 * se / stats.meanV) * 100;
+                const lo = Math.max(0, Math.round(stats.meanV - 2 * se)), hi = Math.round(stats.meanV + 2 * se);
+                const ok = pct <= 15;
+                samplingLine.innerHTML = `Sampling error <b style="color:${ok ? '#28a745' : '#c0392b'}">±${pct.toFixed(1)}%</b> · 95% CI ${lo.toLocaleString()}–${hi.toLocaleString()} BF/ac`;
+                samplingLine.title = `Mean ${Math.round(stats.meanV).toLocaleString()} BF/ac, standard error ±${Math.round(se).toLocaleString()} BF/ac, ${stats.numValidPlots} plots (t = 2). Green at ±15% or better.`;
+                samplingLine.hidden = false;
+            } else samplingLine.hidden = true;
+        }
 
         if (stats && plotCount >= 2 && stats.cvV > 0) {
             const cv = stats.cvV, t = 2;
@@ -1067,7 +1083,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (reportData?.summary?.numberOfPlots > 0) {
                     try {
-                        await addCanvasPng(buildSummaryReportCanvas(reportData, plotStats, areaLetter, projName, selRule, selFc, selBaf), `${nameBase}_Summary_Report.png`);
+                        const stock = calculateStandStocking(areaData, selBaf)?.[0];
+                        await addCanvasPng(await buildSummaryReportCanvas(reportData, plotStats, areaLetter, projName, selRule, selFc, selBaf, stock), `${nameBase}_Summary_Report.png`);
                     } catch(e) { console.error('Summary report export error:', e); }
                     await pause();
                     try {
@@ -1880,6 +1897,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const areaNotesOf = letter => String(currentProject?.areaNotes?.[letter] || '');
 
+    // Regeneration per Area (from ForestScribe's regen notes): one-tap choices plus species & size.
+    const REGEN_CHOICES = {
+        density: [['abundant', 'Abundant'], ['adequate', 'Adequate'], ['sparse', 'Sparse'], ['none', 'None/Minimal']],
+        browse: [['none', 'None'], ['light', 'Light'], ['moderate', 'Moderate'], ['heavy', 'Heavy']],
+        ground: [['leaf-litter', 'Leaf litter'], ['herbaceous', 'Herbaceous'], ['fern', 'Fern'], ['grass', 'Grass'], ['bare-soil', 'Bare soil'], ['mixed', 'Mixed']],
+        invasives: ['Bush Honeysuckle', 'Multiflora Rose', 'Japanese Stiltgrass', 'Tree-of-heaven', 'Autumn Olive', 'Oriental Bittersweet',
+            'Chinese Privet', 'Callery Pear', 'Winter Creeper', 'Paulownia', 'Garlic Mustard', 'Japanese Knotweed', 'English Ivy', 'Kudzu', 'Mimosa'].map(v => [v, v]),
+    };
+    const blankRegen = () => ({ density: '', browse: '', ground: '', invasives: [], species: '' });
+    const regenOf = letter => ({ ...blankRegen(), ...(currentProject?.areaRegen?.[letter] || {}) });
+    const hasRegen = r => !!(r && (r.density || r.browse || r.ground || r.invasives?.length || r.species?.trim()));
+    const regenLabel = (key, v) => (REGEN_CHOICES[key].find(([k]) => k === v) || [v, v])[1];
+    /** "Density: Adequate · Deer browse: Light · …" for the notes file. */
+    function regenText(r) {
+        if (!hasRegen(r)) return '';
+        const parts = [];
+        if (r.density) parts.push(`Density: ${regenLabel('density', r.density)}`);
+        if (r.browse) parts.push(`Deer browse: ${regenLabel('browse', r.browse)}`);
+        if (r.ground) parts.push(`Ground cover: ${regenLabel('ground', r.ground)}`);
+        if (r.species?.trim()) parts.push(`Species & size: ${r.species.trim()}`);
+        if (r.invasives?.length) parts.push(`Invasives: ${r.invasives.join(', ')}`);
+        return parts.join('\n');
+    }
+    function saveRegen(letter, r) {
+        if (!currentProject || !letter) return;
+        currentProject.areaRegen ||= {};
+        if (hasRegen(r)) currentProject.areaRegen[letter] = r; else delete currentProject.areaRegen[letter];
+        saveSessionData();
+        updateDataStrip();
+        if (areaNotesSavedStatus) {
+            areaNotesSavedStatus.textContent = '✓ Saved';
+            clearTimeout(notesSaveTimeout);
+            notesSaveTimeout = setTimeout(() => { if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = ''; }, 2000);
+        }
+    }
+    function renderRegen() {
+        if (!notesArea) return;
+        const r = regenOf(notesArea);
+        document.querySelectorAll('#areaNotesModal .regen-chips').forEach(box => {
+            const key = box.dataset.regen;
+            box.innerHTML = REGEN_CHOICES[key].map(([v, label]) => {
+                const on = key === 'invasives' ? r.invasives.includes(v) : r[key] === v;
+                return `<button type="button" class="regen-chip${on ? ' on' : ''}${key === 'invasives' ? ' inv' : ''}" data-key="${key}" data-value="${escHtml(v)}" aria-pressed="${on}">${escHtml(label)}</button>`;
+            }).join('');
+        });
+        const sp = document.getElementById('regenSpecies');
+        if (sp && document.activeElement !== sp) sp.value = r.species;
+    }
+
     /** Copies the box into the project and saves it. */
     function saveAreaNotes() {
         clearTimeout(notesSaveTimeout);
@@ -1900,18 +1966,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function areaNotesOptions() {
-        const withNotes = Object.keys(currentProject?.areaNotes || {}).filter(a => areaNotesOf(a).trim());
+        const withNotes = [...Object.keys(currentProject?.areaNotes || {}).filter(a => areaNotesOf(a).trim()), ...Object.keys(currentProject?.areaRegen || {})];
         return [...new Set([...window.ttGetDataAreas(), ...withNotes, areaLetters[currentAreaIndex]])].sort();
     }
     function showAreaNotesFor(letter) {
         flushNotes();
         notesArea = letter;
         if (areaNotesSelect) {
-            areaNotesSelect.innerHTML = areaNotesOptions().map(a => `<option value="${a}">Area ${a}${areaNotesOf(a).trim() ? ' ✎' : ''}</option>`).join('');
+            areaNotesSelect.innerHTML = areaNotesOptions().map(a => `<option value="${a}">Area ${a}${areaNotesOf(a).trim() || hasRegen(regenOf(a)) ? ' ✎' : ''}</option>`).join('');
             areaNotesSelect.value = letter;
         }
         if (areaNotesTextarea) areaNotesTextarea.value = areaNotesOf(letter);
         if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = '';
+        renderRegen();
     }
     function openAreaNotes() {
         if (!areaNotesModal) return;
@@ -1926,16 +1993,34 @@ document.addEventListener('DOMContentLoaded', () => {
         notesArea = null;
     }
 
-    /** All Areas' notes as one text (for the .txt export). */
+    /** All Areas' notes and regeneration as one text (for the .txt export). */
     function getAreaNotesText() {
         flushNotes();
-        return Object.keys(currentProject?.areaNotes || {}).sort()
-            .filter(a => areaNotesOf(a).trim())
-            .map(a => `Area ${a}\n${'-'.repeat(20)}\n${areaNotesOf(a).trim()}`)
-            .join('\n\n');
+        const areas = [...new Set([...Object.keys(currentProject?.areaNotes || {}), ...Object.keys(currentProject?.areaRegen || {})])].sort();
+        return areas.map(a => {
+            const notes = areaNotesOf(a).trim(), regen = regenText(regenOf(a));
+            if (!notes && !regen) return '';
+            return [`Area ${a}`, '-'.repeat(20), notes, regen ? `${notes ? '\n' : ''}Regeneration\n${regen}` : ''].filter(Boolean).join('\n');
+        }).filter(Boolean).join('\n\n');
     }
 
     document.getElementById('areaNotesBtn')?.addEventListener('click', openAreaNotes);
+    areaNotesModal?.addEventListener('click', e => {
+        const b = e.target.closest('.regen-chip');
+        if (!b || !notesArea) return;
+        const r = regenOf(notesArea), key = b.dataset.key, v = b.dataset.value;
+        if (key === 'invasives') r.invasives = r.invasives.includes(v) ? r.invasives.filter(x => x !== v) : [...r.invasives, v];
+        else r[key] = r[key] === v ? '' : v;
+        saveRegen(notesArea, r);
+        renderRegen();
+    });
+    let regenSpeciesTimer = null;
+    document.getElementById('regenSpecies')?.addEventListener('input', e => {
+        const letter = notesArea, value = e.target.value;
+        clearTimeout(regenSpeciesTimer);
+        regenSpeciesTimer = setTimeout(() => { if (letter) saveRegen(letter, { ...regenOf(letter), species: value }); }, 500);
+    });
+    document.getElementById('regenSpecies')?.addEventListener('change', e => { if (notesArea) { clearTimeout(regenSpeciesTimer); saveRegen(notesArea, { ...regenOf(notesArea), species: e.target.value }); } });
     document.getElementById('areaNotesDoneBtn')?.addEventListener('click', closeAreaNotes);
     areaNotesModal?.addEventListener('click', e => { if (e.target === areaNotesModal) closeAreaNotes(); });
     areaNotesSelect?.addEventListener('change', e => showAreaNotesFor(e.target.value));
@@ -1946,12 +2031,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = '';
     });
     document.getElementById('areaNotesClearBtn')?.addEventListener('click', () => {
-        if (!notesArea || !areaNotesTextarea?.value.trim()) return;
-        if (!confirm(`Clear the notes for Area ${notesArea}? A safety copy is kept for 7 days.`)) return;
+        if (!notesArea || (!areaNotesTextarea?.value.trim() && !hasRegen(regenOf(notesArea)))) return;
+        if (!confirm(`Clear the notes and regeneration for Area ${notesArea}? A safety copy is kept for 7 days.`)) return;
         flushNotes();
         if (!safetyCopy(`Area ${notesArea} notes cleared`)) return;
         areaNotesTextarea.value = '';
         saveAreaNotes();
+        saveRegen(notesArea, blankRegen());
         showAreaNotesFor(notesArea);
     });
 

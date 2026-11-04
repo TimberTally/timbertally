@@ -1769,3 +1769,23 @@ body.dark-mode .stk-under { color: #f08a62; }
 body.dark-mode .stand-chart-cell { background: #1a2712; }
 .stand-chart-cell canvas { max-width: 100%; }
 .settings-note { font-size: 0.82em; color: var(--text-muted); margin: 10px 0 4px; line-height: 1.4; }
+
+/* Area Notes: regeneration choices */
+.regen-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--forest-border); }
+.regen-title { font-size: 1em; margin: 0 0 8px; color: var(--forest-dark); }
+.regen-hint { font-weight: 400; font-size: 0.8em; color: var(--text-muted); margin-left: 6px; }
+.regen-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+.regen-label { flex: 0 0 92px; font-size: 0.85em; font-weight: 600; color: var(--text-mid); padding-top: 6px; }
+.regen-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.regen-chip {
+    font: inherit; font-size: 0.82em; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+    border: 1.5px solid var(--forest-border); background: var(--bg-card); color: var(--text-dark);
+}
+.regen-chip.on { background: var(--forest-mid); border-color: var(--forest-mid); color: #fff; font-weight: 600; }
+.regen-chip.inv.on { background: #b4461f; border-color: #b4461f; }
+.regen-species { margin: 4px 0 10px; }
+.regen-species input { width: 100%; box-sizing: border-box; }
+.area-notes-modal { max-height: 92vh; overflow-y: auto; }
+.area-notes-modal .stand-notes-textarea { min-height: 140px; }
+.sampling-line { margin-top: 0; }
+@media (max-width: 480px) { .regen-row { flex-direction: column; gap: 4px; } .regen-label { flex: none; padding-top: 0; } }

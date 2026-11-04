@@ -7,7 +7,12 @@
     <title>TimberTally</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="TimberTally">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="theme-color" content="#2d5016">
     <script src="lib/chart.umd.min.js"></script>
     <script src="lib/jszip.min.js"></script>
@@ -159,6 +164,7 @@
                         <div id="plotGoalDisplay" class="plot-goal-line">
                             Plots needed: <span id="neededPlotsValue">---</span>
                         </div>
+                        <div id="samplingLine" class="plot-goal-line sampling-line" hidden></div>
                     </div>
 
                     <div class="field-group entry-card">
@@ -521,9 +527,21 @@
                     <select id="areaNotesSelect"></select>
                 </div>
             </div>
-            <p class="notes-hint">Notes for this Area of the open project: stand observations, site conditions, access, regeneration. Saved as you type and exported as a .txt file with your CSV.</p>
+            <p class="notes-hint">Notes and regeneration for this Area of the open project. Saved as you go and included in the Area Notes file in the ZIP.</p>
             <textarea id="areaNotesTextarea" class="stand-notes-textarea" placeholder="Stand observations, site conditions, ownership info, compass bearings, GPS waypoints..."></textarea>
             <div id="areaNotesSavedStatus" class="notes-saved-status"></div>
+
+            <div class="regen-block">
+                <h3 class="regen-title">Regeneration <span class="regen-hint">tap to pick, tap again to clear</span></h3>
+                <div class="regen-row"><span class="regen-label">Density</span><div class="regen-chips" data-regen="density"></div></div>
+                <div class="regen-row"><span class="regen-label">Deer browse</span><div class="regen-chips" data-regen="browse"></div></div>
+                <div class="regen-row"><span class="regen-label">Ground cover</span><div class="regen-chips" data-regen="ground"></div></div>
+                <div class="input-group regen-species">
+                    <label for="regenSpecies">Species &amp; size</label>
+                    <input type="text" id="regenSpecies" placeholder="e.g. white oak and red maple seedlings, 1–3 ft">
+                </div>
+                <div class="regen-row regen-row-wrap"><span class="regen-label">Invasives</span><div class="regen-chips" data-regen="invasives"></div></div>
+            </div>
             <div class="recs-modal-actions edit-actions">
                 <button type="button" id="areaNotesClearBtn" class="control-button delete-button">&#128465; Clear</button>
                 <span class="edit-actions-spacer"></span>

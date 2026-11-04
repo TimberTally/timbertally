@@ -88,7 +88,7 @@
 
     function blankProject(name) {
         const t = Date.now();
-        return { id: newId(), name: name || 'Untitled Cruise', createdAt: t, updatedAt: t, lastBackupAt: 0, data: [], plot: 1, areaIdx: 0, notes: '', areaNotes: {}, recs: {} };
+        return { id: newId(), name: name || 'Untitled Cruise', createdAt: t, updatedAt: t, lastBackupAt: 0, data: [], plot: 1, areaIdx: 0, notes: '', areaNotes: {}, areaRegen: {}, recs: {} };
     }
 
     function normalizeProject(p) {
@@ -104,6 +104,7 @@
             areaIdx: Math.max(0, Math.min(25, parseInt(p.areaIdx, 10) || 0)),
             notes: '',
             areaNotes: normalizeAreaNotes(p),
+            areaRegen: normalizeAreaRegen(p.areaRegen),
             recs: p.recs && typeof p.recs === 'object' ? p.recs : {},
         };
     }
@@ -125,7 +126,24 @@
         }
         return out;
     }
-    const hasAreaNotes = p => Object.values(p.areaNotes || {}).some(v => String(v || '').trim()) || !!String(p.notes || '').trim();
+    /** Regeneration notes per Area: { A: { density, browse, ground, invasives: [], species } }. */
+    function normalizeAreaRegen(r) {
+        const out = {};
+        if (!r || typeof r !== 'object') return out;
+        for (const [k, v] of Object.entries(r)) {
+            if (!/^[A-Z]$/.test(k) || !v || typeof v !== 'object') continue;
+            const e = {
+                density: typeof v.density === 'string' ? v.density : '',
+                browse: typeof v.browse === 'string' ? v.browse : '',
+                ground: typeof v.ground === 'string' ? v.ground : '',
+                invasives: Array.isArray(v.invasives) ? v.invasives.filter(x => typeof x === 'string') : [],
+                species: typeof v.species === 'string' ? v.species : '',
+            };
+            if (e.density || e.browse || e.ground || e.invasives.length || e.species.trim()) out[k] = e;
+        }
+        return out;
+    }
+    const hasAreaNotes = p => Object.keys(p.areaRegen || {}).length > 0 || Object.values(p.areaNotes || {}).some(v => String(v || '').trim()) || !!String(p.notes || '').trim();
 
     const getIndex = () => {
         const idx = readJSON(K.index, null);
@@ -235,7 +253,7 @@
         if ((b.version || 0) > BACKUP_VERSION) throw new Error('This backup was made by a newer TimberTally. Update the app and try again.');
         return b;
     }
-    const contentKey = p => { const n = normalizeProject(p); return JSON.stringify([n.data, n.areaNotes, n.recs]); };
+    const contentKey = p => { const n = normalizeProject(p); return JSON.stringify([n.data, n.areaNotes, n.areaRegen, n.recs]); };
     /**
      * Adds the backup's projects. One already here with the same contents is skipped; one
      * that differs is added as a copy marked "(restored)". Nothing on this device is replaced.

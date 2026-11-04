@@ -23,7 +23,7 @@ The field entry form from ForestScribe, built for one-handed use:
 
 *   **Plots / Area Notes** — buttons at the top of the Data tab, beside the project name and "Area A · Plot 3".
     *   **Plots** lists every plot in an Area with its tree count, BA/acre and GPS. **Go** jumps to a plot to keep entering trees there. **Move** renumbers a plot or moves it to another Area; its trees, empty-plot record and GPS points go with it. Moving onto a plot that already has trees combines the two (you are warned first). A safety copy is kept before every move. An empty plot can be removed with ✕.
-    *   **Area Notes** opens a notes box for the current Area (switch Areas inside it). Each Area keeps its own notes, saved as you type. A dot on the button shows the current Area has notes.
+    *   **Area Notes** opens a notes box for the current Area (switch Areas inside it). Each Area keeps its own notes, saved as you type. Below the notes, **Regeneration** records the Area's regeneration with one tap each: density (Abundant / Adequate / Sparse / None), deer browse (None to Heavy), ground cover, the invasive species seen, and a species & size line. A dot on the button shows the current Area has notes or regeneration. Both go into the Area Notes file in the ZIP.
 *   **Area / Plot #** — joined -/+ steppers side by side (Area A–Z, Plot 1–999). Swipe left or right across them to change plots. The Plot # label shows how many trees are already in the current plot, and the Plots Needed estimate sits just below.
 *   **Species** — the 8 species you use most appear as quick-pick buttons (2 rows of 4, refreshed every 10 entries; long names are shortened to fit, e.g. Northern Red Oak to N. Red Oak). Common hardwoods fill the first row until you have your own. The full list is in the dropdown below, which starts blank so a tree is never saved as the wrong species by accident.
 *   **DBH / Logs** — scroll wheels (4 to 40 in. DBH; 0.5 to 6 logs or Cull). The wheel follows your finger, stops when your finger stops, and a flick coasts a short way; tap a row to pick it, or use a mouse wheel on a computer. Trees 10 in. and under are always 0 logs.
@@ -39,6 +39,8 @@ The field entry form from ForestScribe, built for one-handed use:
 ### Plots Needed Display
 Estimates plots required for the current Area to reach 10%, 20% and 30% precision, calculated from the Coefficient of Variation across plots within that Area (t=2). Shown under the Area / Plot counters on the Data tab. Requires at least 2 plots in the current Area.
 
+Under it, once the Area has 2 or more plots, the **sampling error** (±% of mean volume at 95% confidence, t = 2; green at ±15% or better) and the **95% confidence interval** for volume per acre (BF/ac) show how precise the Area's estimate is so far.
+
 ### Saving, Backup & Safety Copies
 TimberTally 3 saves like ForestScribe:
 
@@ -48,7 +50,7 @@ TimberTally 3 saves like ForestScribe:
 *   **Backup files** — **Save Backup** writes one `.json` file with every project, your species list and plan details (phones open the share sheet so it can go to Files, email or a cloud drive). **Restore Backup** only adds: projects already on the device are skipped, and a project that differs is added as a "(restored)" copy. Nothing on the device is replaced.
 *   **Backup reminder** — a banner appears when changes have gone 7 days without a backup (tap Later to snooze for a day).
 *   **Storage protection** — the app asks the browser to keep its storage rather than clear it to free space. The Projects tab shows whether that was granted and how much space is used.
-*   **Separate from TimberTally 2** — TimberTally 3 keeps its own storage. On first run it copies in TimberTally 2's saved projects, working data (as the open project), stand notes, settings and species list. TimberTally 2's data is left in place.
+*   **Separate from TimberTally 2** — TimberTally 3 keeps its own storage. On first run it copies in TimberTally 2's saved projects, working data (as the open project), stand notes (into Area notes), settings and species list. TimberTally 2's data is left in place.
 
 ### Forestry Settings
 Accessed via the ⚙ Settings button in the header (collapses/expands; sticks to the top of the screen alongside the header). Settings are saved locally and persist between sessions:
@@ -117,7 +119,7 @@ ProjectName_TimberTally_YYYYMMDD_HHMM.zip
 4.  **Forestry Report** — Full stand tables including overall summary (Vol/Acre, TPA, BA/Acre, QMD for Total/Cut/Leave), Stand Distribution by DBH size class, Species Composition by TPA percentage, and Volume by Species (Small/Medium/Large Sawtimber BF/Acre).
 
 ### Area Summary Report
-A landscape one-page summary PNG (4200×2700px) with the key stand metrics, distribution tables, species summaries and plot statistics.
+One **11 × 8.5 in landscape page** (2200×1700px, 200 dpi), ready to print on letter paper: volume, trees and basal area per acre (Total / Cut / Leave) and QMD across the top; Stand Distribution by size class, Gingrich Stocking (as cruised and after the marked cut) and Sampling Statistics (CV, sampling error, plots needed) on the left; one Species table with composition and sawtimber volume, largest volume first, on the right. Rows and text size adjust so the page is full whether the Area has 3 species or 30; when there's room, the Area's stocking chart fills the space under the species table.
 
 ### Area Graphs page
 The four stand charts (Basal Area, Trees Per Acre, Volume by Species, Sawtimber Volume) on a single **11 × 8.5 in landscape page** (2200×1700px, 200 dpi), ready to print on letter paper. They match the charts on the Tally tab.
@@ -163,7 +165,7 @@ Every Area's notes in one `.txt` file, grouped by Area.
 *   **JSZip** (`v3.10.1`, included in `lib/`) — builds the saved ZIP. Both libraries ship with the app, so charts and saving work offline from the first use.
 *   **Volume calculations** — Doyle (FC70–86, scaled from embedded FC78 table), Scribner, and International ¼" log rules. Trees <10" DBH return 0 board feet (below sawtimber threshold).
 *   **Gingrich stocking chart** — TPA (x-axis) vs. BA/Acre (y-axis); curves computed from the Gingrich (1967) stocking equation, as in ForestScribe.
-*   **Summary Report PNG** — drawn entirely via the HTML5 Canvas 2D API (no Chart.js) at 3× logical resolution (4200×2700px physical) for print-quality output at 100% zoom.
+*   **Summary Report PNG** — drawn entirely via the HTML5 Canvas 2D API (no Chart.js) as an 11 × 8.5 in landscape page (2200×1700px, 200 dpi).
 *   **Device APIs used** — Geolocation API (GPS), Device Orientation API (compass), beforeinstallprompt (PWA install).
 *   **Sticky header** — The app header and collapsible settings panel are wrapped in a single sticky block; the tab bar sticks directly below it with no gap. Height is measured dynamically via JavaScript on load, resize, and settings toggle.
 *   **Pull-to-refresh suppressed** — `overscroll-behavior: none` is applied to both `html` and `body` to prevent the Android Chrome pull-to-refresh indicator from appearing during normal scrolling.
@@ -196,4 +198,4 @@ Every Area's notes in one `.txt` file, grouped by Area.
 *   All data stored in `localStorage`. Clearing browser site data will erase saved projects, species, settings, and notes. Exporting CSV files is the primary way to permanently preserve collected data.
 *   GPS accuracy depends on device hardware and environmental conditions.
 *   Compass accuracy depends on device sensors and calibration. Keep the device away from metal objects. The heading source type (absolute, webkit, alpha) is indicated in the compass display.
-*   The Summary Report PNG is generated at 4200×2700px (3× scale) for crisp printing and screen viewing without zoom. File size is typically 4–6 MB.
+*   The Summary Report and Graphs pages are 2200×1700px PNGs (11 × 8.5 in at 200 dpi) and print on letter paper, landscape, at 100%.
