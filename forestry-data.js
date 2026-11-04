@@ -112,21 +112,7 @@ const INTERNATIONAL_FC78_VOLUMES = {
     '40':{'1.0':731,'1.5':1030,'2.0':1329,'2.5':1598,'3.0':1868,'3.5':2081,'4.0':2294,'4.5':2494,'5.0':2693,'5.5':2898,'6.0':3103}
 };
 
-// --- Gingrich (1967) Stocking Curves — Upland Hardwoods ---
-// x = QMD (avg DBH, inches)   y = Trees Per Acre
-// A-line = full stocking,  B-line = minimum for full site occupancy
-const GINGRICH_A = [
-    {x:1,y:2400},{x:2,y:1400},{x:3,y:880},{x:4,y:620},{x:5,y:480},
-    {x:6,y:380},{x:7,y:300},{x:8,y:245},{x:9,y:200},{x:10,y:165},
-    {x:11,y:138},{x:12,y:117},{x:14,y:86},{x:16,y:65},{x:18,y:51},
-    {x:20,y:41},{x:22,y:33},{x:24,y:27},{x:26,y:22},{x:28,y:18}
-];
-const GINGRICH_B = [
-    {x:1,y:1200},{x:2,y:700},{x:3,y:440},{x:4,y:310},{x:5,y:240},
-    {x:6,y:190},{x:7,y:150},{x:8,y:122},{x:9,y:100},{x:10,y:83},
-    {x:11,y:69},{x:12,y:59},{x:14,y:43},{x:16,y:33},{x:18,y:26},
-    {x:20,y:21},{x:22,y:17},{x:24,y:14},{x:26,y:11},{x:28,y:9}
-];
+// Gingrich (1967) stocking is computed from its equation in forestry-calc.js.
 
 // --- Valid Doyle Form Classes ---
 const VALID_DOYLE_FC = [70, 72, 74, 76, 78, 80, 82, 84, 86];

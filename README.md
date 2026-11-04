@@ -21,6 +21,9 @@ Uses a Service Worker to cache all application files after the first load, allow
 ### Data Entry (Data Tab)
 The field entry form from ForestScribe, built for one-handed use:
 
+*   **Plots / Area Notes** — buttons at the top of the Data tab, beside the project name and "Area A · Plot 3".
+    *   **Plots** lists every plot in an Area with its tree count, BA/acre and GPS. **Go** jumps to a plot to keep entering trees there. **Move** renumbers a plot or moves it to another Area; its trees, empty-plot record and GPS points go with it. Moving onto a plot that already has trees combines the two (you are warned first). A safety copy is kept before every move. An empty plot can be removed with ✕.
+    *   **Area Notes** opens a notes box for the current Area (switch Areas inside it). Each Area keeps its own notes, saved as you type. A dot on the button shows the current Area has notes.
 *   **Area / Plot #** — joined -/+ steppers side by side (Area A–Z, Plot 1–999). Swipe left or right across them to change plots. The Plot # label shows how many trees are already in the current plot, and the Plots Needed estimate sits just below.
 *   **Species** — the 8 species you use most appear as quick-pick buttons (2 rows of 4, refreshed every 10 entries; long names are shortened to fit, e.g. Northern Red Oak to N. Red Oak). Common hardwoods fill the first row until you have your own. The full list is in the dropdown below, which starts blank so a tree is never saved as the wrong species by accident.
 *   **DBH / Logs** — scroll wheels (4 to 40 in. DBH; 0.5 to 6 logs or Cull). The wheel follows your finger, stops when your finger stops, and a flick coasts a short way; tap a row to pick it, or use a mouse wheel on a computer. Trees 10 in. and under are always 0 logs.
@@ -41,7 +44,7 @@ TimberTally 3 saves like ForestScribe:
 
 *   **Live projects** — the open project is the saved copy. Every tree, edit, plot move, stand note and recommendation is written to it immediately, and again when the screen locks or you switch apps. On restart the app opens the same project at the same plot and area. There is no "recover unsaved data?" prompt, and nothing is ever deleted at startup.
 *   **Honest save status** — the header shows the time of the last save. If a save fails (for example, device storage is full) a red bar appears on every screen size explaining what to do, and the header shows "⚠ Not saved".
-*   **Safety copies** — a full copy of the project is kept automatically before Delete All Data, deleting selected entries, deleting a project, clearing stand notes, or adding a CSV. Copies are listed on the Projects tab for 7 days, and restoring one adds it as a new project.
+*   **Safety copies** — a full copy of the project is kept automatically before Delete All Data, deleting selected entries, deleting a project, clearing an Area's notes, moving a plot, or adding a CSV. Copies are listed on the Projects tab for 7 days, and restoring one adds it as a new project.
 *   **Backup files** — **Save Backup** writes one `.json` file with every project, your species list and plan details (phones open the share sheet so it can go to Files, email or a cloud drive). **Restore Backup** only adds: projects already on the device are skipped, and a project that differs is added as a "(restored)" copy. Nothing on the device is replaced.
 *   **Backup reminder** — a banner appears when changes have gone 7 days without a backup (tap Later to snooze for a day).
 *   **Storage protection** — the app asks the browser to keep its storage rather than clear it to free space. The Projects tab shows whether that was granted and how much space is used.
@@ -75,25 +78,20 @@ Manage the species list used across all dropdowns:
 *   **Add Species** — Type a name and click "+ Add" to add a new species.
 *   **Remove Species** — A scrollable multi-select list lets you select one or more species to remove.
 
-### Notes Tab
-Stand-level notes for the open project (observations, site conditions, ownership info, compass bearings, GPS waypoints). Notes save with the project as you type. On CSV export, notes are included as a separate `.txt` file alongside the CSV.
-
-### Tally Tab
+### Tally Tab (Tally & Stocking)
 On-screen summary of all collected data, filterable by Area:
 
 *   **Summary Cards** — Key metrics at a glance: Trees/Acre, BA/Acre, Avg DBH (QMD), Vol/Acre, number of plots, and total tree entries.
+*   **Gingrich Stocking Chart** — every Area on the **Gingrich (1967) stocking chart** for upland hardwoods (the same drawing as ForestScribe), drawn automatically when the tab opens. Trees per acre across, basal area per acre up, with the A-line (100%), B-line (60%), the 50–120% stocking curves, average-diameter lines and shaded Overstocked / Fully stocked / Understocked zones. Each Area is a filled dot; when trees are marked Cut, a dashed arrow runs to a hollow circle for the stand left after the cut. The table above it gives TPA, BA/acre, QMD and percent stocking (with the level) for each Area, and for the residual stand when there is a cut. Stocking uses the Gingrich equation (−0.00507·N + 0.01698·ΣD + 0.00317·ΣD²) read on the chart basis (trees/acre and QMD), so the percent, the level and the plotted point always agree.
 *   **Tree Tally** — Full breakdown by Species → DBH → Logs → Cut status.
 *   **Stand Charts** — Three live Chart.js charts rendered in-app: Basal Area Distribution (by DBH class, cut/leave), Trees Per Acre Distribution (by DBH class, cut/leave), and Volume by Species (horizontal bar, board feet/acre).
-
-### Stocking Tab
-Plots stand data on the **Gingrich (1967) stocking chart** for upland hardwoods. Axes are Trees Per Acre (TPA) on the X-axis and Basal Area per Acre (sq ft) on the Y-axis, with interpolated A-line and B-line stocking curves. Each area is plotted as three points (Total, Cut, Leave) color-coded by area letter, with the area letter labeled inside each point. A stats table above the chart shows TPA and BA/Acre for Total, Cut, and Leave by area.
 
 ### Recs Tab (Recommendation Builder)
 A simple way to write the management recommendations for each Area, using the standard recommendation library from ForestScribe (48 recommendations in 9 categories: TSI, harvest & regeneration, invasive species, wildlife, pests & storm damage, and more).
 
 *   **Area** — recommendations are kept separately for each Area letter (defaults to the Area you are collecting on the Data tab).
 *   **Library buttons** — tap a category to open it, then tap a recommendation to add it (tap again to remove). Hover a button to see its text. Some recommendations ask for a detail when added (e.g. which invasive species); anything left blank becomes a write-in line.
-*   **Plan Details** — optional state, organization, county and phone numbers. These pick the right state wording (Kentucky vs. other states) and fill in names and numbers.
+*   **Plan Details** — wording is set for Kentucky and the Kentucky Division of Forestry. Pick the **County** from the list of all 120 Kentucky counties and its **NRCS office phone** fills in. Confirmed USDA Service Center numbers are built in for Allen, Barren, Edmonson, Hart, Simpson and Warren (add more to `kentucky-counties.js` for everyone). For any other county, type the number once and it is remembered on that device. Typing over a built-in number corrects it on that device; **Use built-in** puts the list's number back.
 *   **Edit** — change any wording, reorder with ↑/↓, remove, or add your own custom recommendation. Markup: `**bold**`, `__underline__`, a line starting with `• ` is a bullet, blank line = new paragraph.
 *   **Preview** — the finished, numbered recommendations. **Copy Recommendations** copies formatted text (bold, bullets and tables survive a paste into Word or Google Docs), with an option to include titles.
 
@@ -117,10 +115,10 @@ Each CSV contains four sections:
 3.  **Per-Plot Volume & Statistics** — Volume (BF/Acre) per plot, plus Mean, Variance, Std Dev, and CV across plots within the area.
 4.  **Forestry Report** — Full stand tables including overall summary (Vol/Acre, TPA, BA/Acre, QMD for Total/Cut/Leave), Stand Distribution by DBH size class, Species Composition by TPA percentage, and Volume by Species (Small/Medium/Large Sawtimber BF/Acre).
 
-### Stand Notes Export
-If any stand notes have been entered, they are exported as a separate `.txt` file alongside the CSV(s):
+### Area Notes Export
+If any Area notes have been entered, they are exported (grouped by Area) as a separate `.txt` file alongside the CSV(s):
 ```
-ProjectName_StandNotes_Timestamp.txt
+ProjectName_AreaNotes_Timestamp.txt
 ```
 
 ### Optional Graph PNGs (when Export Graphs = Yes)
@@ -130,7 +128,7 @@ Six PNG files are generated per area export:
 2.  **TPA_Dist** — Trees Per Acre Distribution by DBH class (Cut/Leave stacked bar).
 3.  **Vol_Species** — Volume by Species (horizontal bar, BF/Acre).
 4.  **Vol_Sawtimber** — Sawtimber Volume by Species, broken down by Small/Medium/Large size class.
-5.  **Gingrich_Stocking** — Gingrich stocking chart (1200×700px) plotting all areas on the TPA vs. BA/Acre chart with A-line and B-line curves.
+5.  **Gingrich_Stocking** — Gingrich stocking chart (1440×1120px), the same drawing as the Tally tab, plotting all areas.
 6.  **Summary_Report** — A landscape one-page summary PNG (4200×2700px, ~300 DPI equivalent) containing all key stand metrics, distribution tables, species summaries, and plot statistics.
 
 ### ZIP Export (Save as ZIP = Yes)
@@ -152,9 +150,9 @@ This is the recommended mode for iPhone users, as iOS requires individual save c
 6.  **Enter Tree Data** — Select Species, DBH, and Logs. Check Cut and/or UGS if applicable. Optionally tap GPS to record coordinates or add a per-tree note. Click **✔ Submit Entry**.
 7.  **Manage Species** — Use the Species tab to add or remove species from the dropdown.
 8.  **Manage Projects** — Use the Projects tab to save, load, or delete named projects. Load external CSV files via the file picker or by dragging and dropping a `.csv` directly onto the drop zone.
-9.  **Add Stand Notes** — Use the Notes tab for cruise-level observations. Notes save automatically and export as a `.txt` file.
+9.  **Add Area Notes** — Tap Area Notes on the Data tab for each Area's observations. Notes save automatically and export as a `.txt` file.
 10. **Review Data** — Use the Tally tab to view summary cards, species/DBH breakdowns, and live charts. Use the Area dropdown to filter by area.
-11. **Check Stocking** — Use the Stocking tab to plot your stand(s) on the Gingrich chart. Click "Calculate & Plot Stocking."
+11. **Check Stocking** — Open the Tally tab: the Gingrich chart for every Area is drawn automatically.
 12. **Use the Compass** — Click 🧭 Compass (above the Recent Entries table on the Data tab) to open the on-screen compass. Grant orientation permission if prompted.
 13. **Delete Entries** — Check entries in the Recent Entries table and click 🗑 Delete. Use ⚠ Delete All Data (with confirmation) to clear everything.
 14. **Export** — Click **💾 Save CSV** to download output for all areas. With ZIP mode enabled, everything downloads as a single file.
@@ -171,10 +169,10 @@ This is the recommended mode for iPhone users, as iOS requires individual save c
     *   `timberTallyProjects` — named saved projects.
     *   `timberTallySettings` — BAF, log rule, form class, graph preference, ZIP preference, dark mode.
     *   `timberTallyStandNotes` — persistent stand-level notes.
-*   **Chart.js** (`v4.4.1` via CDN) — used for in-app tally charts, the Gingrich stocking chart, and all export graph PNGs.
+*   **Chart.js** (`v4.4.1` via CDN) — used for in-app tally charts and the export graph PNGs (the Gingrich chart is drawn as SVG).
 *   **JSZip** (`v3.10.1` via CDN) — used for ZIP bundle export when Save as ZIP is enabled.
 *   **Volume calculations** — Doyle (FC70–86, scaled from embedded FC78 table), Scribner, and International ¼" log rules. Trees <10" DBH return 0 board feet (below sawtimber threshold).
-*   **Gingrich stocking chart** — TPA (x-axis) vs. BA/Acre (y-axis) with A-line and B-line curves interpolated from published Gingrich (1967) data points. Area points plotted as circle (Total), triangle (Cut), and square (Leave) with area letters labeled inside.
+*   **Gingrich stocking chart** — TPA (x-axis) vs. BA/Acre (y-axis); curves computed from the Gingrich (1967) stocking equation, as in ForestScribe.
 *   **Summary Report PNG** — drawn entirely via the HTML5 Canvas 2D API (no Chart.js) at 3× logical resolution (4200×2700px physical) for print-quality output at 100% zoom.
 *   **Device APIs used** — Geolocation API (GPS), Device Orientation API (compass), beforeinstallprompt (PWA install).
 *   **Sticky header** — The app header and collapsible settings panel are wrapped in a single sticky block; the tab bar sticks directly below it with no gap. Height is measured dynamically via JavaScript on load, resize, and settings toggle.
@@ -190,7 +188,8 @@ This is the recommended mode for iPhone users, as iOS requires individual save c
 | `style.css` | Stylesheet — light and dark mode, responsive layout |
 | `script.js` | All app logic — data entry, settings, projects, export, compass, etc. |
 | `forestry-calc.js` | Forestry calculation functions (TPA, BA, volume, stocking, tally) |
-| `forestry-data.js` | Static lookup tables — Doyle/Scribner/International volume tables, Gingrich curves, default species list |
+| `forestry-data.js` | Static lookup tables — Doyle/Scribner/International volume tables, default species list |
+| `kentucky-counties.js` | Kentucky's 120 counties and the NRCS phone numbers built into the Recs tab |
 | `charts.js` | Chart.js chart builders — in-app tally charts, stocking chart, export graph generators, summary report canvas |
 | `manifest.json` | Web App Manifest for PWA install and theming |
 | `service-worker.js` | Caching and offline support |

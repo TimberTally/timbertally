@@ -254,51 +254,85 @@ function generateTallyData(dataSubset) {
     return tally;
 }
 
+// =============================================================================
+// GINGRICH (1967) STOCKING — upland central hardwoods (same math as ForestScribe)
+//
+// A-level percent stocking = -0.00507 N + 0.01698 ΣD + 0.00317 ΣD²
+// (N = trees/acre, ΣD = sum of diameters/acre, ΣD² = sum of squared diameters/acre).
+// 100% = A-line (average maximum stocking); the B-line (minimum for full site
+// use) is 60%. Between B and A the stand is fully stocked, above A overstocked,
+// below B understocked. Stocking is read as on the chart: from trees/acre and
+// quadratic mean diameter, so the %, the level and the plotted point always agree.
+// =============================================================================
+const GINGRICH_A_PCT = 100;
+const GINGRICH_B_PCT = 60;
+const _GA = -0.00507, _GB = 0.01698, _GC = 0.00317;
+
+/** Percent stocking for a stand of uniform diameter `qmd` at `tpa` trees/acre. */
+function gingrichPercent(tpa, qmd) {
+    if (!(tpa > 0) || !(qmd > 0)) return 0;
+    return _GA * tpa + _GB * tpa * qmd + _GC * tpa * qmd * qmd;
+}
+
+/** BA/acre on the `pct` stocking curve at `tpa` trees/acre (solved for uniform diameter). */
+function gingrichBaAt(pct, tpa) {
+    const a = _GC * tpa, b = _GB * tpa, c = _GA * tpa - pct;
+    const disc = b * b - 4 * a * c;
+    if (a <= 0 || disc < 0) return NaN;
+    const d = (-b + Math.sqrt(disc)) / (2 * a);
+    return tpa * BA_CONST * d * d;
+}
+
+function gingrichLevel(pct) {
+    if (pct >= GINGRICH_A_PCT) return 'Overstocked';
+    if (pct >= GINGRICH_B_PCT) return 'Fully stocked';
+    return 'Understocked';
+}
+
 /**
- * Calculate per-area stocking stats for the Gingrich chart.
+ * Per-area stocking for the Gingrich chart: the stand as cruised (Total), the
+ * marked trees (Cut) and the residual stand after the cut (Leave).
  * @param {Array}  collectedData - Full dataset
  * @param {number} baf
- * @returns {Array|null} Array of area stat objects, or null
+ * @returns {Array|null}
  */
 function calculateStandStocking(collectedData, baf) {
     if (!collectedData?.length) return null;
     const areas = [...new Set(collectedData.map(e => e.areaLetter).filter(Boolean))].sort();
     if (!areas.length) return null;
 
-    return areas.map(area => {
+    const list = areas.map(area => {
         const areaData = collectedData.filter(e => e.areaLetter === area);
+        // Empty-plot records count as plots (they hold no trees).
         const plots    = new Set(areaData.map(e => e.plotNumber).filter(p => p != null && !isNaN(parseInt(p, 10))));
         const numPlots = plots.size;
         if (numPlots === 0) return null;
 
-        let totTrees = 0, cutTrees = 0, totTpaSum = 0, cutTpaSum = 0;
+        const acc = { total: { n: 0, d2: 0 }, cut: { n: 0, d2: 0 }, leave: { n: 0, d2: 0 } };
         areaData.forEach(entry => {
             if (entry.emptyPlot) return;
             const dbh = parseFloat(entry.dbh);
             if (isNaN(dbh) || dbh <= 0) return;
-            const ba  = BA_CONST * Math.pow(dbh, 2);
-            const tpa = ba > 0 ? baf / ba : 0;
-            totTrees++; totTpaSum += tpa;
-            if (entry.cutStatus === 'Yes') { cutTrees++; cutTpaSum += tpa; }
+            const tpa = baf / (BA_CONST * dbh * dbh);  // trees/acre this tally tree stands for
+            const buckets = entry.cutStatus === 'Yes' ? [acc.total, acc.cut] : [acc.total, acc.leave];
+            buckets.forEach(b => { b.n += tpa; b.d2 += tpa * dbh * dbh; });
         });
+        if (!(acc.total.n > 0)) return { area, numPlots, empty: true };
 
-        const totalTpa = numPlots > 0 ? totTpaSum / numPlots : 0;
-        const cutTpa   = numPlots > 0 ? cutTpaSum / numPlots : 0;
-        const leaveTpa = totalTpa - cutTpa;
-        const totalBa  = numPlots > 0 ? (totTrees * baf) / numPlots : 0;
-        const cutBa    = numPlots > 0 ? (cutTrees * baf) / numPlots : 0;
-        const leaveBa  = totalBa - cutBa;
-
-        const qmd = (tpa, ba) => tpa > 0 && ba > 0 ? Math.sqrt((ba / tpa) / BA_CONST) : 0;
-
-        return {
-            area, numPlots, totalTpa, cutTpa, leaveTpa,
-            totalBa, cutBa, leaveBa,
-            totalQmd: qmd(totalTpa, totalBa),
-            cutQmd:   qmd(cutTpa,   cutBa),
-            leaveQmd: qmd(leaveTpa, leaveBa)
+        const point = b => {
+            const tpa = b.n / numPlots, sumD2 = b.d2 / numPlots;
+            const qmd = tpa > 0 ? Math.sqrt(sumD2 / tpa) : 0;
+            return { tpa, ba: BA_CONST * sumD2, qmd, pct: gingrichPercent(tpa, qmd) };
         };
-    }).filter(Boolean);
+        const t = point(acc.total), c = point(acc.cut), l = point(acc.leave);
+        return {
+            area, numPlots,
+            totalTpa: t.tpa, totalBa: t.ba, totalQmd: t.qmd, totalPct: t.pct, totalLevel: gingrichLevel(t.pct),
+            cutTpa: c.tpa, cutBa: c.ba, cutQmd: c.qmd,
+            leaveTpa: l.tpa, leaveBa: l.ba, leaveQmd: l.qmd, leavePct: l.pct, leaveLevel: gingrichLevel(l.pct),
+        };
+    }).filter(s => s && !s.empty);
+    return list.length ? list : null;
 }
 
 /**

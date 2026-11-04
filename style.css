@@ -1702,3 +1702,62 @@ body.dark-mode .modal-content h2 { color: var(--text-dark); border-bottom-color:
 .backup-reminder[hidden] { display: none; }
 .backup-reminder button { background: #fff; color: #7c2d12; border: none; border-radius: 6px; padding: 4px 10px; font-size: 0.95em; font-weight: 700; }
 .backup-reminder #backupReminderLater { background: transparent; color: #fff; text-decoration: underline; padding: 4px 6px; }
+
+/* ============================================================
+   TimberTally 3.1 — Data strip (Plots / Area Notes), Plots & Move Plot,
+   Area Notes, Gingrich stocking chart (ForestScribe drawing)
+   ============================================================ */
+.data-strip {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+}
+.data-strip-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.data-strip-name { font-weight: 700; font-size: 0.95rem; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.data-strip-context { font-size: 0.8rem; color: var(--text-muted); }
+.stand-card-btn {
+    position: relative; flex-shrink: 0;
+    display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 5px 10px; min-width: 64px; border-radius: 10px;
+    border: 1px solid var(--forest-border); background: var(--forest-pale); color: var(--forest-dark);
+    font: inherit; font-size: 0.72rem; font-weight: 700; cursor: pointer;
+}
+.stand-card-btn:hover { border-color: var(--forest-mid); }
+.stand-card-btn.has-notes { border-color: var(--forest-mid); }
+.stand-card-btn .tool-dot {
+    position: absolute; top: 4px; right: 6px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent-amber);
+}
+.stand-card-btn .tool-dot[hidden] { display: none; }
+
+.area-notes-modal, .plots-modal { max-width: 560px; width: 100%; }
+.move-plot-modal { max-width: 400px; width: 100%; }
+.area-notes-modal .notes-header-row,
+.plots-modal .notes-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-right: 28px; }
+.area-notes-modal .notes-header-row h2,
+.plots-modal .notes-header-row h2 { margin: 0; }
+.area-notes-modal .stand-notes-textarea { min-height: 220px; width: 100%; box-sizing: border-box; }
+
+.plots-table-wrap { max-height: 55vh; overflow-y: auto; }
+.plots-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.plots-table th { background: var(--forest-pale); color: var(--forest-dark); text-align: left; padding: 6px 8px; position: sticky; top: 0; }
+.plots-table td { padding: 5px 8px; border-bottom: 1px solid var(--forest-border); vertical-align: middle; }
+.plots-table tr.plot-current td { background: var(--forest-pale); font-weight: 600; }
+.plots-table .plot-here { color: var(--text-muted); }
+.plots-table .plot-empty { color: var(--text-muted); }
+.plots-table .plot-actions { white-space: nowrap; text-align: right; }
+.plots-table .plot-btn { padding: 4px 10px; font-size: 0.85em; margin-left: 4px; }
+.move-plot-warn { color: #a15c00; font-size: 0.9em; margin: 8px 0; }
+body.dark-mode .move-plot-warn { color: var(--accent-amber); }
+
+.stocking-chart-wrapper .gingrich-svg svg { width: 100%; height: auto; display: block; border-radius: var(--radius-sm); border: 1px solid var(--forest-border); }
+.gingrich-legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 0.85em; margin-top: 6px; color: var(--text-dark); }
+.gingrich-legend-muted { color: var(--text-muted); }
+.stk-over  { color: #1e5aa0; font-weight: 600; white-space: nowrap; }
+.stk-full  { color: #2b6424; font-weight: 600; white-space: nowrap; }
+.stk-under { color: #b4461f; font-weight: 600; white-space: nowrap; }
+body.dark-mode .stk-over  { color: #8ab8f0; }
+body.dark-mode .stk-full  { color: #8fd07f; }
+body.dark-mode .stk-under { color: #f08a62; }
+
+.recs-details-note:empty { display: none; }
+#recsNrcsPhone[readonly] { background: var(--bg-row-alt); color: var(--text-dark); }

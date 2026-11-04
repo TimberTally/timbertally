@@ -12,37 +12,15 @@
     const DETAILS_KEY = window.TTStore?.K.recDetails || 'tt3.recDetails';
     const LIBRARY = Array.isArray(window.REC_LIBRARY) ? window.REC_LIBRARY : [];
     const CATEGORIES = [...new Set(LIBRARY.map(r => r.category))];
+    // TimberTally is shared with the Kentucky Division of Forestry, so the wording is always
+    // Kentucky / KDF (there is no state or organization choice).
+    const KY_COUNTIES = Array.isArray(window.KY_COUNTIES) ? window.KY_COUNTIES : [];
+    const KY_NRCS_PHONES = window.KY_NRCS_PHONES || {};
+    const ORG = { state: 'KY', name: 'Kentucky', orgName: 'Kentucky Division of Forestry', orgShort: 'KDF',
+        region: 'Kentucky', bmpGuide: 'the Kentucky Forest Practice Guidelines for Water Quality Management' };
 
-    const US_STATES = [
-        ['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],['CO','Colorado'],
-        ['CT','Connecticut'],['DE','Delaware'],['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],
-        ['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],
-        ['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],
-        ['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],
-        ['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],
-        ['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],
-        ['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],
-        ['WI','Wisconsin'],['WY','Wyoming'],
-    ];
-    const stateName = code => (US_STATES.find(([c]) => c === code) || [code, code])[1];
-
-    // Services a non-agency organization can offer; each turns on its sentence in the library.
-    const SERVICES = [
-        { id: 'marking', label: 'Timber marking & tally' },
-        { id: 'tsi-marking', label: 'TSI / crop tree marking' },
-        { id: 'invasive-marking', label: 'Invasive plant marking' },
-        { id: 'buyer-list', label: 'Timber buyer list' },
-    ];
-
-    const STATE_PACKS = {
-        KY: { region: 'Kentucky', bmpGuide: 'the Kentucky Forest Practice Guidelines for Water Quality Management' },
-    };
-    const GENERIC_PACK = { region: 'this region', bmpGuide: "your state's forestry best management practices (BMP) guidelines" };
-
-    const DEFAULT_DETAILS = {
-        state: 'KY', orgType: 'consultant', orgName: '', orgShort: '', services: [], markingFee: '',
-        county: '', nrcsPhone: '', officePhone: '',
-    };
+    /** county: the County dropdown; nrcsPhones: numbers typed for counties not in kentucky-counties.js. */
+    const DEFAULT_DETAILS = { county: '', nrcsPhones: {} };
 
     // ============================================================
     // STATE
@@ -58,7 +36,18 @@
 
     function load() {
         const d = window.TTStore ? window.TTStore.readJSON(DETAILS_KEY, null) : null;
-        store.details = { ...DEFAULT_DETAILS, ...(d || {}) };
+        store.details = { ...DEFAULT_DETAILS, nrcsPhones: {} };
+        if (d && typeof d === 'object') {
+            if (typeof d.nrcsPhones === 'object' && d.nrcsPhones) store.details.nrcsPhones = { ...d.nrcsPhones };
+            // Older versions saved free-typed county text: keep it when it names a Kentucky county.
+            const c = String(d.county || '').trim().replace(/\s+county$/i, '');
+            const match = KY_COUNTIES.find(k => k.toLowerCase() === c.toLowerCase());
+            if (match) {
+                store.details.county = match;
+                const old = String(d.nrcsPhone || '').trim();
+                if (old && old !== KY_NRCS_PHONES[match] && !store.details.nrcsPhones[match]) store.details.nrcsPhones[match] = old;
+            }
+        }
     }
     function save() {
         if (window.TTStore) window.TTStore.writeJSON(DETAILS_KEY, store.details);
@@ -70,26 +59,26 @@
     // ============================================================
     // TEXT RESOLUTION (state/organization wording + placeholders)
     // ============================================================
+    /** NRCS phone for the chosen county: one typed on this device (a correction) first, then the built-in list. */
+    function nrcsPhoneFor(county) {
+        if (!county) return '';
+        return store.details.nrcsPhones?.[county] || KY_NRCS_PHONES[county] || '';
+    }
+
     function orgContext() {
-        const d = store.details;
-        const pack = { ...GENERIC_PACK, ...(STATE_PACKS[d.state] || {}) };
-        const name = stateName(d.state);
-        const isAgency = d.orgType === 'state-agency';
-        const orgName = d.orgName.trim() || (isAgency && d.state === 'KY' ? 'Kentucky Division of Forestry' : 'our office');
-        const fee = d.markingFee.trim();
         return {
-            state: d.state,
-            agency: isAgency,
-            kdf: isAgency && d.state === 'KY',
-            services: d.services || [],
+            state: ORG.state,
+            agency: true,
+            kdf: true,
+            services: ['marking', 'tsi-marking', 'invasive-marking', 'buyer-list'],
             tokens: {
-                STATE_NAME: name,
-                STATE_POSS: `${name}'s`,
-                REGION: pack.region,
-                ORG_NAME: orgName,
-                ORG_SHORT: d.orgShort.trim() || (orgName === 'Kentucky Division of Forestry' ? 'KDF' : orgName),
-                MARKING_FEE_TEXT: fee ? ` for a fee of ${fee}` : '',
-                BMP_GUIDE: pack.bmpGuide,
+                STATE_NAME: ORG.name,
+                STATE_POSS: `${ORG.name}'s`,
+                REGION: ORG.region,
+                ORG_NAME: ORG.orgName,
+                ORG_SHORT: ORG.orgShort,
+                MARKING_FEE_TEXT: ' for a fee of $10 per MBF (thousand board feet) marked, with a minimum of $100',
+                BMP_GUIDE: ORG.bmpGuide,
             },
         };
     }
@@ -120,16 +109,17 @@
 
     /** Final text for the preview: plan details filled in, unfilled blanks become write-in lines. */
     function fillPlaceholders(text) {
-        const d = store.details;
+        const county = store.details.county;
         const map = {
-            COUNTY: d.county.trim() || '________',
-            NRCS_PHONE: d.nrcsPhone.trim() || '(___) ___-____',
-            OFFICE_PHONE: d.officePhone.trim() || '(___) ___-____',
-            FORESTER_PHONE: d.officePhone.trim() || '(___) ___-____',
+            COUNTY: county || '________',
+            NRCS_PHONE: nrcsPhoneFor(county) || '(___) ___-____',
             WATERSHED: '________',
             AREA: currentArea || '',
         };
         return resolveOrgText(text)
+            // No office phone is asked for any more: drop it from older recommendation text.
+            .replace(/\s+at \{\{(?:OFFICE|FORESTER)_PHONE\}\}/g, '')
+            .replace(/\{\{(?:OFFICE|FORESTER)_PHONE\}\}/g, '')
             .replace(/\{\{([A-Z_]+)\}\}/g, (m, k) => (k in map ? map[k] : m))
             .replace(/\{\{[a-z][A-Za-z0-9]*\}\}/g, '________');
     }
@@ -250,16 +240,23 @@
 
     function renderDetails() {
         const d = store.details;
-        $('recsState').value = d.state;
-        $('recsOrgType').value = d.orgType;
-        $('recsOrgName').value = d.orgName;
-        $('recsMarkingFee').value = d.markingFee;
-        $('recsCounty').value = d.county;
-        $('recsNrcsPhone').value = d.nrcsPhone;
-        $('recsOfficePhone').value = d.officePhone;
-        $('recsServicesGroup').hidden = d.orgType === 'state-agency';
-        $('recsServices').innerHTML = SERVICES.map(s =>
-            `<label class="recs-check"><input type="checkbox" value="${s.id}" ${d.services.includes(s.id) ? 'checked' : ''}> ${s.label}</label>`).join('');
+        const sel = $('recsCounty');
+        if (sel && !sel.options.length) {
+            sel.innerHTML = '<option value="">Pick a county…</option>' + KY_COUNTIES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        }
+        if (sel) sel.value = d.county || '';
+        const phone = $('recsNrcsPhone');
+        const known = KY_NRCS_PHONES[d.county];
+        const own = d.nrcsPhones?.[d.county];
+        if (document.activeElement !== phone) phone.value = nrcsPhoneFor(d.county);
+        phone.readOnly = !d.county;
+        phone.placeholder = d.county ? '(___) ___-____' : 'Pick a county first';
+        $('recsNrcsPhoneHint').innerHTML = !d.county ? ''
+            : own ? `Your number for ${esc(d.county)} County (saved on this device)${known ? ` — built-in is ${esc(known)}. <button type="button" class="link-btn" id="recsNrcsReset">Use built-in</button>` : '.'}`
+            : known ? `NRCS office for ${esc(d.county)} County. Type over it to correct it on this device.`
+            : `Type the NRCS number for ${esc(d.county)} County once; it is remembered.`;
+        const reset = $('recsNrcsReset');
+        if (reset) reset.onclick = () => { delete store.details.nrcsPhones[d.county]; save(); renderDetails(); if (mode === 'preview') renderPreview(); };
     }
 
     function renderLibrary() {
@@ -414,21 +411,18 @@
 
         $('recsAreaSelect').addEventListener('change', e => { currentArea = e.target.value; renderLibrary(); renderMode(); });
 
-        // Plan details
-        const bindDetail = (id, key) => $(id).addEventListener('input', e => { store.details[key] = e.target.value; save(); if (mode === 'preview') renderPreview(); });
-        bindDetail('recsOrgName', 'orgName');
-        bindDetail('recsMarkingFee', 'markingFee');
-        bindDetail('recsCounty', 'county');
-        bindDetail('recsNrcsPhone', 'nrcsPhone');
-        bindDetail('recsOfficePhone', 'officePhone');
-        $('recsState').innerHTML = US_STATES.map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
-        $('recsState').addEventListener('change', e => { store.details.state = e.target.value; save(); render(); });
-        $('recsOrgType').addEventListener('change', e => { store.details.orgType = e.target.value; save(); render(); });
-        $('recsServices').addEventListener('change', () => {
-            store.details.services = [...$('recsServices').querySelectorAll('input:checked')].map(i => i.value);
+        // Plan details: county dropdown; NRCS phone fills in (or is typed once per county)
+        $('recsCounty').addEventListener('change', e => { store.details.county = e.target.value; save(); renderDetails(); if (mode === 'preview') renderPreview(); renderLibrary(); });
+        $('recsNrcsPhone').addEventListener('input', e => {
+            const c = store.details.county;
+            if (!c) return;
+            const v = e.target.value.trim();
+            // Typing the built-in number back (or clearing the box) goes back to the built-in one.
+            if (v && v !== KY_NRCS_PHONES[c]) store.details.nrcsPhones[c] = v; else delete store.details.nrcsPhones[c];
             save();
-            renderLibrary();
+            if (mode === 'preview') renderPreview();
         });
+        $('recsNrcsPhone').addEventListener('change', renderDetails);
 
         // Library buttons
         $('recsLibrary').addEventListener('click', e => {

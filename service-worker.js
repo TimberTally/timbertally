@@ -5,7 +5,7 @@
 // Caches are named with this prefix so cleanup never touches caches from other
 // TimberTally versions hosted on the same github.io origin.
 const CACHE_PREFIX = 'timber-tally3-cache-';
-const CACHE_NAME = CACHE_PREFIX + 'v1'; // <--- CHANGE THIS with each new deployment!
+const CACHE_NAME = CACHE_PREFIX + 'v5'; // <--- CHANGE THIS with each new deployment!
 
 // List of files that make up the "app shell" - essential for offline loading.
 const urlsToCache = [
@@ -18,6 +18,7 @@ const urlsToCache = [
   './charts.js',
   './storage.js',
   './scroll-wheel.js',
+  './kentucky-counties.js',
   './recommendations-data.js',
   './recommendations.js',
   './manifest.json',

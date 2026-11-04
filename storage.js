@@ -88,7 +88,7 @@
 
     function blankProject(name) {
         const t = Date.now();
-        return { id: newId(), name: name || 'Untitled Cruise', createdAt: t, updatedAt: t, lastBackupAt: 0, data: [], plot: 1, areaIdx: 0, notes: '', recs: {} };
+        return { id: newId(), name: name || 'Untitled Cruise', createdAt: t, updatedAt: t, lastBackupAt: 0, data: [], plot: 1, areaIdx: 0, notes: '', areaNotes: {}, recs: {} };
     }
 
     function normalizeProject(p) {
@@ -102,10 +102,30 @@
             data: Array.isArray(p.data) ? p.data.filter(e => e && typeof e === 'object') : [],
             plot: Math.max(1, Math.min(999, parseInt(p.plot, 10) || 1)),
             areaIdx: Math.max(0, Math.min(25, parseInt(p.areaIdx, 10) || 0)),
-            notes: typeof p.notes === 'string' ? p.notes : '',
+            notes: '',
+            areaNotes: normalizeAreaNotes(p),
             recs: p.recs && typeof p.recs === 'object' ? p.recs : {},
         };
     }
+
+    /**
+     * Notes are kept per Area ({ A: '…', B: '…' }). Older projects had one Stand Notes box
+     * for the whole project; that text moves into the first Area with data (or Area A).
+     */
+    function normalizeAreaNotes(p) {
+        const out = {};
+        if (p.areaNotes && typeof p.areaNotes === 'object') {
+            for (const [k, v] of Object.entries(p.areaNotes)) if (/^[A-Z]$/.test(k) && typeof v === 'string' && v.trim()) out[k] = v;
+        }
+        const legacy = typeof p.notes === 'string' ? p.notes.trim() : '';
+        if (legacy) {
+            const areas = [...new Set((Array.isArray(p.data) ? p.data : []).map(e => e?.areaLetter).filter(a => /^[A-Z]$/.test(a || '')))].sort();
+            const to = areas[0] || 'A';
+            out[to] = out[to] ? `${out[to]}\n\n${legacy}` : legacy;
+        }
+        return out;
+    }
+    const hasAreaNotes = p => Object.values(p.areaNotes || {}).some(v => String(v || '').trim()) || !!String(p.notes || '').trim();
 
     const getIndex = () => {
         const idx = readJSON(K.index, null);
@@ -166,7 +186,7 @@
     }
     /** Copies the project as it is now. Returns true when kept (or there was nothing worth keeping). */
     function snapshot(p, reason) {
-        if (!p || (!p.data?.length && !p.notes?.trim() && !Object.values(p.recs || {}).some(r => r?.length))) return true;
+        if (!p || (!p.data?.length && !hasAreaNotes(p) && !Object.values(p.recs || {}).some(r => r?.length))) return true;
         const meta = { id: newId(), projectId: p.id, name: p.name, reason, createdAt: Date.now(), treeCount: treeCount(p) };
         let ok = writeJSON(K.snap(meta.id), p, { quiet: true });
         // Storage full: make room by dropping the oldest copies, then try again.
@@ -215,7 +235,7 @@
         if ((b.version || 0) > BACKUP_VERSION) throw new Error('This backup was made by a newer TimberTally. Update the app and try again.');
         return b;
     }
-    const contentKey = p => JSON.stringify([p.data, p.notes || '', p.recs || {}]);
+    const contentKey = p => { const n = normalizeProject(p); return JSON.stringify([n.data, n.areaNotes, n.recs]); };
     /**
      * Adds the backup's projects. One already here with the same contents is skipped; one
      * that differs is added as a copy marked "(restored)". Nothing on this device is replaced.

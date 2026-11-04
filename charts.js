@@ -1,7 +1,7 @@
 // =============================================================================
 // charts.js — Chart.js generators for TimberTally
-// Depends on: forestry-data.js (GINGRICH_A, GINGRICH_B)
-//             forestry-calc.js (calculateForestryReport, calculateStandStocking)
+// Depends on: forestry-data.js (BA_CONST)
+//             forestry-calc.js (calculateForestryReport, calculateStandStocking, gingrichBaAt)
 // All functions are called from script.js; chart instances are managed there.
 // =============================================================================
 
@@ -241,290 +241,195 @@ function generateVolSawtimberChartExport(report, canvas) {
 }
 
 // =============================================================================
-// GINGRICH STOCKING CHART — called from renderStockingChart() in script.js
-// Axes: X = Trees Per Acre (TPA), Y = Basal Area / Acre (sq ft)
-// Reference: Gingrich (1967) upland hardwoods stocking guide
+// GINGRICH STOCKING CHART — the ForestScribe drawing (SVG), used on screen and
+// for the PNG export. X = trees per acre, Y = basal area per acre (sq ft).
+// Each Area is a filled dot (stand as cruised); when trees are marked to cut, a
+// dashed arrow runs to a hollow circle (the residual stand after the cut).
+// Curves come from the Gingrich (1967) equation (forestry-calc.js).
 // =============================================================================
 
-// Gingrich curve data: [TPA, BA/Acre]
-const GINGRICH_A_PTS = [
-    [20,40],[40,60],[60,75],[80,88],[100,100],
-    [150,120],[200,136],[300,158],[400,172]
-];
-const GINGRICH_B_PTS = [
-    [50,15],[100,30],[150,45],[200,58],
-    [300,80],[400,98],[500,114],[600,128]
-];
+const GINGRICH_LIGHT = {
+    bg: '#ffffff', text: '#1c211a', muted: '#6b7466', grid: '#e3e6df',
+    aLine: '#1f4e1b', bLine: '#1f4e1b',
+    fully: 'rgba(55,122,47,0.10)', over: 'rgba(30,90,160,0.08)',
+    point: '#b4461f', residual: '#2b6424',
+};
+const GINGRICH_DARK = {
+    bg: '#1a1f18', text: '#e7ece4', muted: '#9aa494', grid: '#2f372c',
+    aLine: '#8fd07f', bLine: '#8fd07f',
+    fully: 'rgba(120,200,100,0.12)', over: 'rgba(90,150,230,0.12)',
+    point: '#f08a62', residual: '#8fd07f',
+};
+const GINGRICH_W = 720, GINGRICH_H = 560;
 
-function _gingrichInterpolate(pts, tpa) {
-    if (tpa <= pts[0][0]) return pts[0][1];
-    if (tpa >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
-    for (let i = 0; i < pts.length - 1; i++) {
-        if (tpa >= pts[i][0] && tpa <= pts[i + 1][0]) {
-            const t = (tpa - pts[i][0]) / (pts[i + 1][0] - pts[i][0]);
-            return pts[i][1] + t * (pts[i + 1][1] - pts[i][1]);
-        }
-    }
-    return null;
-}
+const _svgEsc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
-function _buildGingrichCurve(pts, xMax, step = 10) {
-    const result = [];
-    const xStart = pts[0][0];
-    const xEnd   = Math.min(xMax, pts[pts.length - 1][0]);
-    for (let x = xStart; x <= xEnd; x += step) {
-        result.push({ x, y: _gingrichInterpolate(pts, x) });
-    }
-    if (result[result.length - 1]?.x < xEnd) {
-        result.push({ x: xEnd, y: _gingrichInterpolate(pts, xEnd) });
-    }
-    return result;
+/** Chart points from calculateStandStocking(): current stand + residual after the marked cut. */
+function gingrichPoints(areaStats) {
+    return (areaStats || []).map(s => ({
+        label: `Area ${s.area}`, tpa: s.totalTpa, ba: s.totalBa,
+        residual: s.cutTpa > 0 ? { tpa: s.leaveTpa, ba: s.leaveBa } : null,
+    }));
 }
 
 /**
- * Build and return a Gingrich stocking chart on the provided canvas.
- * X-axis = TPA, Y-axis = BA/Acre (sq ft)
- * Plots Total, Cut, and Leave points per area with area letter labels.
- * @param {Array}       areaStats   - Output of calculateStandStocking()
- * @param {HTMLElement} canvas
- * @returns {Chart|null}
+ * The Gingrich chart as an SVG string.
+ * @param {Array}  points - [{label, tpa, ba, residual:{tpa,ba}|null}]
+ * @param {Object} opts   - {width, height, colors, title, fontScale, xMax, yMax}
  */
-function buildStockingChart(areaStats, canvas) {
-    if (!areaStats?.length || !canvas) return null;
+function renderGingrichSvg(points, opts = {}) {
+    const fsc = opts.fontScale ?? 1;
+    const fz = n => (n * fsc).toFixed(1);
+    const W = opts.width ?? GINGRICH_W, H = opts.height ?? GINGRICH_H;
+    const C = opts.colors ?? GINGRICH_LIGHT;
+    const m = { l: 44 + 18 * fsc, r: 46 + 18 * fsc, t: opts.title ? 44 : 20, b: 36 + 16 * fsc };
+    const pw = W - m.l - m.r, ph = H - m.t - m.b;
 
-    // Determine axis ranges from data
-    const allTpa = areaStats.flatMap(s => [s.totalTpa, s.cutTpa, s.leaveTpa].filter(v => v > 0));
-    const maxTpa = Math.max(600, ...allTpa) * 1.1;
-    const xMax = Math.ceil(maxTpa / 100) * 100;
+    const allTpa = points.flatMap(p => [p.tpa, p.residual?.tpa ?? 0]);
+    const allBa  = points.flatMap(p => [p.ba,  p.residual?.ba  ?? 0]);
+    const xMax = opts.xMax ?? Math.max(450, Math.ceil((Math.max(0, ...allTpa) * 1.12) / 50) * 50);
+    const yMax = opts.yMax ?? Math.max(160, Math.ceil((Math.max(0, ...allBa) * 1.12) / 10) * 10);
+    const X = tpa => m.l + (tpa / xMax) * pw;
+    const Y = ba => m.t + ph - (ba / yMax) * ph;
 
-    const aLineData = _buildGingrichCurve(GINGRICH_A_PTS, xMax);
-    const bLineData = _buildGingrichCurve(GINGRICH_B_PTS, xMax);
-
-    const datasets = [
-        {
-            label: 'A-Line (Full Stocking)',
-            data: aLineData,
-            showLine: true,
-            borderColor: '#333',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            borderDash: [6, 3],
-            pointRadius: 0,
-            fill: false,
-            order: 2,
-            type: 'line'
-        },
-        {
-            label: 'B-Line (Min Full Stocking)',
-            data: bLineData,
-            showLine: true,
-            borderColor: '#888',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            borderDash: [4, 4],
-            pointRadius: 0,
-            fill: false,
-            order: 2,
-            type: 'line'
-        }
-    ];
-
-    // One scatter dataset per area — Total (circle), Cut (triangle), Leave (rect)
-    areaStats.forEach((s, i) => {
-        const color = AREA_COLORS[i % AREA_COLORS.length];
+    const curve = pct => {
         const pts = [];
-        if (s.totalTpa > 0 && s.totalBa > 0) pts.push({ x: s.totalTpa, y: s.totalBa, ptLabel: `${s.area} Total`, shape: 'circle' });
-        if (s.cutTpa   > 0 && s.cutBa   > 0) pts.push({ x: s.cutTpa,   y: s.cutBa,   ptLabel: `${s.area} Cut`,   shape: 'triangle' });
-        if (s.leaveTpa > 0 && s.leaveBa > 0) pts.push({ x: s.leaveTpa, y: s.leaveBa, ptLabel: `${s.area} Leave`, shape: 'rect' });
-        if (!pts.length) return;
-        datasets.push({
-            label: `Area ${s.area}`,
-            data: pts,
-            backgroundColor: pts.map((_, pi) => pi === 0 ? color : pi === 1 ? `${color}bb` : `${color}77`),
-            borderColor: '#000',
-            borderWidth: 1.5,
-            pointStyle: pts.map(p => p.shape),
-            pointRadius: 10,
-            pointHoverRadius: 12,
-            type: 'scatter',
-            order: 1
-        });
-    });
-
-    const labelPlugin = {
-        id: 'areaLabels',
-        afterDraw(chart) {
-            const ctx = chart.ctx;
-            chart.data.datasets.forEach((ds, di) => {
-                if (ds.type !== 'scatter' || !ds.data?.length) return;
-                const meta = chart.getDatasetMeta(di);
-                meta.data.forEach((pt, pi) => {
-                    const raw = ds.data[pi];
-                    const letter = (raw.ptLabel || '').replace(/^(.*)\s(Total|Cut|Leave)$/, '$1').trim();
-                    ctx.save();
-                    ctx.font = 'bold 10px sans-serif';
-                    ctx.fillStyle = '#fff';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(letter, pt.x, pt.y);
-                    ctx.restore();
-                });
-            });
+        for (let tpa = 20; tpa <= xMax; tpa += 5) {
+            const ba = gingrichBaAt(pct, tpa);
+            if (!Number.isFinite(ba) || ba > yMax) continue;
+            const d = Math.sqrt(ba / (tpa * BA_CONST));
+            if (d < 3 || d > 24) continue;
+            pts.push([X(tpa), Y(ba)]);
         }
+        return pts;
     };
+    const xy = pts => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L');
+    const path = pts => (pts.length ? 'M' + xy(pts) : '');
 
-    try {
-        return new Chart(canvas, {
-            type: 'scatter',
-            data: { datasets },
-            options: {
-                animation: false,
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Gingrich Stocking Guide — Upland Hardwoods',
-                        font: { size: 14, weight: 'bold' },
-                        color: '#1e2d0f'
-                    },
-                    legend: {
-                        position: 'bottom',
-                        labels: { font: { size: 11 }, usePointStyle: true }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const pt = ctx.raw;
-                                if (pt.ptLabel) return `${pt.ptLabel}: TPA=${pt.x.toFixed(1)}, BA=${pt.y.toFixed(1)} sq ft/ac`;
-                                return `TPA: ${pt.x}, BA: ${pt.y}`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        min: 0,
-                        max: xMax,
-                        title: { display: true, text: 'Trees Per Acre (TPA)', font: { size: 12, weight: 'bold' }, color: '#3d4d2e' }
-                    },
-                    y: {
-                        type: 'linear',
-                        min: 0,
-                        title: { display: true, text: 'Basal Area / Acre (sq ft)', font: { size: 12, weight: 'bold' }, color: '#3d4d2e' },
-                        beginAtZero: true
-                    }
-                }
-            },
-            plugins: [labelPlugin]
-        });
-    } catch(e) { console.error('Stocking chart error:', e); return null; }
+    const out = [];
+    out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Arial, Helvetica, sans-serif">`);
+    out.push(`<rect width="${W}" height="${H}" fill="${C.bg}"/>`);
+    if (opts.title) out.push(`<text x="${W / 2}" y="26" text-anchor="middle" font-size="${fz(16)}" font-weight="700" fill="${C.text}">${_svgEsc(opts.title)}</text>`);
+
+    // Grid
+    for (let t = 50; t <= xMax; t += 50) {
+        out.push(`<line x1="${X(t)}" y1="${m.t}" x2="${X(t)}" y2="${m.t + ph}" stroke="${C.grid}" stroke-width="1"/>`);
+        out.push(`<text x="${X(t)}" y="${m.t + ph + 18}" text-anchor="middle" font-size="${fz(12)}" fill="${C.muted}">${t}</text>`);
+    }
+    for (let b = 20; b <= yMax; b += 20) {
+        out.push(`<line x1="${m.l}" y1="${Y(b)}" x2="${m.l + pw}" y2="${Y(b)}" stroke="${C.grid}" stroke-width="1"/>`);
+        out.push(`<text x="${m.l - 8}" y="${Y(b) + 4}" text-anchor="end" font-size="${fz(12)}" fill="${C.muted}">${b}</text>`);
+    }
+
+    // Shaded zones: fully stocked (B..A) and overstocked (above A)
+    const a = curve(GINGRICH_A_PCT), bl = curve(GINGRICH_B_PCT);
+    if (a.length && bl.length) {
+        out.push(`<path d="${path(a)}L${xy([...bl].reverse())}Z" fill="${C.fully}"/>`);
+        const ax0 = a[0][0], ax1 = a[a.length - 1][0];
+        out.push(`<path d="${path(a)}L${ax1.toFixed(1)},${m.t}L${ax0.toFixed(1)},${m.t}Z" fill="${C.over}"/>`);
+    }
+
+    // Average-diameter rays
+    for (const d of [6, 8, 10, 12, 14, 16, 18, 20]) {
+        const k = BA_CONST * d * d;
+        const exitsRight = yMax / k > xMax;
+        const tEnd = exitsRight ? xMax : yMax / k;
+        const x2 = X(tEnd), y2 = Y(k * tEnd);
+        out.push(`<line x1="${X(0)}" y1="${Y(0)}" x2="${x2}" y2="${y2}" stroke="${C.muted}" stroke-width="0.7" stroke-dasharray="2 4" opacity="0.7"/>`);
+        out.push(exitsRight
+            ? `<text x="${x2 - 4}" y="${y2 + 12 * fsc}" font-size="${fz(10)}" fill="${C.muted}" text-anchor="end">${d}" dbh</text>`
+            : `<text x="${x2}" y="${y2 - 4}" font-size="${fz(10)}" fill="${C.muted}" text-anchor="middle">${d}"</text>`);
+    }
+
+    // Stocking-percent curves, then the A and B lines
+    for (const pct of [50, 70, 80, 90, 110, 120]) {
+        const c = curve(pct);
+        if (!c.length) continue;
+        out.push(`<path d="${path(c)}" fill="none" stroke="${C.muted}" stroke-width="0.8" opacity="0.6"/>`);
+        const [lx, ly] = c[c.length - 1];
+        out.push(`<text x="${lx + 4}" y="${ly + 4}" font-size="${fz(10)}" fill="${C.muted}">${pct}%</text>`);
+    }
+    for (const [pct, name, color] of [[GINGRICH_A_PCT, 'A', C.aLine], [GINGRICH_B_PCT, 'B', C.bLine]]) {
+        const c = curve(pct);
+        if (!c.length) continue;
+        out.push(`<path d="${path(c)}" fill="none" stroke="${color}" stroke-width="2.6"/>`);
+        const [x0, y0] = c[0];
+        out.push(`<text x="${x0 - 4}" y="${y0 + 5}" text-anchor="end" font-size="${fz(15)}" font-weight="700" fill="${color}">${name}</text>`);
+        const [lx, ly] = c[c.length - 1];
+        out.push(`<text x="${lx + 4}" y="${ly + 4}" font-size="${fz(11)}" font-weight="700" fill="${color}">${pct}%</text>`);
+    }
+
+    // Zone labels
+    const zone = (text, pct, tpa) => {
+        const ba = gingrichBaAt(pct, tpa);
+        if (Number.isFinite(ba) && ba < yMax) out.push(`<text x="${X(tpa)}" y="${Y(ba)}" font-size="${fz(12)}" font-weight="700" fill="${C.muted}" text-anchor="middle" letter-spacing="1">${text}</text>`);
+    };
+    zone('OVERSTOCKED', 115, Math.min(xMax * 0.55, 260));
+    zone('FULLY STOCKED', 80, Math.min(xMax * 0.6, 280));
+    zone('UNDERSTOCKED', 42, Math.min(xMax * 0.6, 280));
+
+    // Axes
+    out.push(`<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="none" stroke="${C.text}" stroke-width="1.2"/>`);
+    out.push(`<text x="${m.l + pw / 2}" y="${H - 12}" text-anchor="middle" font-size="${fz(13)}" font-weight="700" fill="${C.text}">Trees per acre</text>`);
+    out.push(`<text transform="translate(18 ${m.t + ph / 2}) rotate(-90)" text-anchor="middle" font-size="${fz(13)}" font-weight="700" fill="${C.text}">Basal area per acre (sq ft)</text>`);
+
+    // Points
+    const arrowId = `tt-res-arrow-${C.residual.replace(/[^a-z0-9]/gi, '')}`;
+    out.push(`<defs><marker id="${arrowId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10Z" fill="${C.residual}"/></marker></defs>`);
+    for (const p of points) {
+        if (!(p.tpa > 0 && p.ba > 0)) continue;
+        const px = X(Math.min(p.tpa, xMax)), py = Y(Math.min(p.ba, yMax));
+        if (p.residual && p.residual.tpa > 0 && Math.abs(p.residual.ba - p.ba) > 0.5) {
+            const rx = X(p.residual.tpa), ry = Y(p.residual.ba);
+            const len = Math.hypot(rx - px, ry - py);
+            const k = len > 18 ? (len - 9) / len : 1;
+            out.push(`<line x1="${px}" y1="${py}" x2="${(px + (rx - px) * k).toFixed(1)}" y2="${(py + (ry - py) * k).toFixed(1)}" stroke="${C.residual}" stroke-width="1.8" stroke-dasharray="5 3"${k < 1 ? ` marker-end="url(#${arrowId})"` : ''}/>`);
+            out.push(`<circle cx="${rx}" cy="${ry}" r="6" fill="${C.bg}" stroke="${C.residual}" stroke-width="2.4"/>`);
+        }
+        out.push(`<circle cx="${px}" cy="${py}" r="7" fill="${C.point}" stroke="${C.bg}" stroke-width="2"/>`);
+        const label = p.label;
+        const flip = px + 10 + label.length * 14 * fsc * 0.62 > m.l + pw;
+        out.push(`<text x="${flip ? px - 10 : px + 10}" y="${py - 8}" text-anchor="${flip ? 'end' : 'start'}" font-size="${fz(14)}" font-weight="800" fill="${C.text}" stroke="${C.bg}" stroke-width="3" paint-order="stroke">${_svgEsc(label)}</text>`);
+    }
+    out.push('</svg>');
+    return out.join('');
 }
 
-// =============================================================================
-// GINGRICH EXPORT — fixed-size version for PNG download
-// =============================================================================
-
 /**
- * Build a fixed-size (1200×700) Gingrich chart for PNG export.
- * @param {Array}       areaStats  - Output of calculateStandStocking()
- * @param {HTMLElement} canvas
- * @returns {Chart|null}
+ * Draws the on-screen chart into `container` (sized to it, larger text on phones,
+ * recoloured for dark mode) with a small legend underneath.
  */
-function buildStockingChartExport(areaStats, canvas) {
-    if (!areaStats?.length || !canvas) return null;
+function renderGingrichInto(container, areaStats) {
+    if (!container) return;
+    const points = gingrichPoints(areaStats);
+    const dark = document.body.classList.contains('dark-mode');
+    const C = dark ? GINGRICH_DARK : GINGRICH_LIGHT;
+    const width = container.clientWidth || GINGRICH_W;
+    const fontScale = Math.min(2, Math.max(1, (GINGRICH_W / Math.max(width, 1)) * 0.75));
+    const hasCut = points.some(p => p.residual && Math.abs(p.residual.ba - p.ba) > 0.5);
+    const dot = (style) => `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:middle;margin-right:5px;${style}"></span>`;
+    container.innerHTML = `<div class="gingrich-svg">${renderGingrichSvg(points, { colors: C, fontScale })}</div>
+        <div class="gingrich-legend">
+            <span>${dot(`background:${C.point}`)}Current stand</span>
+            ${hasCut ? `<span>${dot(`border:2px solid ${C.residual}`)}After marked cut</span>` : ''}
+            <span class="gingrich-legend-muted">A = 100% · B = 60%</span>
+        </div>`;
+}
 
-    const allTpa = areaStats.flatMap(s => [s.totalTpa, s.cutTpa, s.leaveTpa].filter(v => v > 0));
-    const maxTpa = Math.max(600, ...allTpa) * 1.15;
-    const xMax   = Math.ceil(maxTpa / 100) * 100;
-
-    const aLineData = _buildGingrichCurve(GINGRICH_A_PTS, xMax, 5);
-    const bLineData = _buildGingrichCurve(GINGRICH_B_PTS, xMax, 5);
-
-    const datasets = [
-        {
-            label: 'A-Line (Full Stocking)',
-            data: aLineData, showLine: true,
-            borderColor: '#333', backgroundColor: 'transparent',
-            borderWidth: 2.5, borderDash: [8, 4], pointRadius: 0, fill: false, order: 2, type: 'line'
-        },
-        {
-            label: 'B-Line (Min Full Stocking)',
-            data: bLineData, showLine: true,
-            borderColor: '#888', backgroundColor: 'transparent',
-            borderWidth: 2.5, borderDash: [5, 5], pointRadius: 0, fill: false, order: 2, type: 'line'
-        }
-    ];
-
-    areaStats.forEach((s, i) => {
-        const color = AREA_COLORS[i % AREA_COLORS.length];
-        const pts = [];
-        if (s.totalTpa > 0 && s.totalBa > 0) pts.push({ x: s.totalTpa, y: s.totalBa, ptLabel: `${s.area} Total`,  shape: 'circle'   });
-        if (s.cutTpa   > 0 && s.cutBa   > 0) pts.push({ x: s.cutTpa,   y: s.cutBa,   ptLabel: `${s.area} Cut`,    shape: 'triangle' });
-        if (s.leaveTpa > 0 && s.leaveBa > 0) pts.push({ x: s.leaveTpa, y: s.leaveBa, ptLabel: `${s.area} Leave`,  shape: 'rect'     });
-        if (!pts.length) return;
-        datasets.push({
-            label: `Area ${s.area}`,
-            data: pts,
-            backgroundColor: pts.map((_, pi) => pi === 0 ? color : pi === 1 ? `${color}bb` : `${color}77`),
-            borderColor: '#000', borderWidth: 1.5,
-            pointStyle: pts.map(p => p.shape),
-            pointRadius: 13, pointHoverRadius: 15,
-            type: 'scatter', order: 1
-        });
-    });
-
-    const labelPlugin = {
-        id: 'areaLabelsExport',
-        afterDraw(chart) {
-            const ctx = chart.ctx;
-            chart.data.datasets.forEach((ds, di) => {
-                if (ds.type !== 'scatter' || !ds.data?.length) return;
-                const meta = chart.getDatasetMeta(di);
-                meta.data.forEach((pt, pi) => {
-                    const raw = ds.data[pi];
-                    const letter = (raw.ptLabel || '').replace(/^(.*)\s(Total|Cut|Leave)$/, '$1').trim();
-                    ctx.save();
-                    ctx.font = 'bold 12px sans-serif';
-                    ctx.fillStyle = '#fff';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(letter, pt.x, pt.y);
-                    ctx.restore();
-                });
-            });
-        }
-    };
-
+/** The chart drawn onto a canvas (white background) for the PNG export. */
+async function buildGingrichCanvas(areaStats, scale = 2) {
+    const svg = renderGingrichSvg(gingrichPoints(areaStats), { title: 'Gingrich Stocking Guide — Upland Hardwoods' });
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     try {
-        return new Chart(canvas, {
-            type: 'scatter',
-            data: { datasets },
-            options: {
-                animation: false, responsive: false, maintainAspectRatio: false,
-                plugins: {
-                    customCanvasBackgroundColor: { color: 'white' },
-                    title: {
-                        display: true,
-                        text: 'Gingrich Stocking Guide — Upland Hardwoods',
-                        font: { size: 18, weight: 'bold' }, color: '#000'
-                    },
-                    legend: { position: 'bottom', labels: { font: { size: 13 }, usePointStyle: true, color: '#000' } },
-                    tooltip: { enabled: false }
-                },
-                scales: {
-                    x: { type: 'linear', min: 0, max: xMax,
-                         title: { display: true, text: 'Trees Per Acre (TPA)', font: { size: 14, weight: 'bold' }, color: '#000' },
-                         ticks: { color: '#000', font: { size: 12 } }, grid: { color: '#ddd' } },
-                    y: { type: 'linear', min: 0, beginAtZero: true,
-                         title: { display: true, text: 'Basal Area / Acre (sq ft)', font: { size: 14, weight: 'bold' }, color: '#000' },
-                         ticks: { color: '#000', font: { size: 12 } }, grid: { color: '#ddd' } }
-                }
-            },
-            plugins: [labelPlugin]
-        });
-    } catch(e) { console.error('Stocking export chart error:', e); return null; }
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('Chart render failed')); img.src = url; });
+        const c = document.createElement('canvas');
+        c.width = Math.round(GINGRICH_W * scale); c.height = Math.round(GINGRICH_H * scale);
+        const g = c.getContext('2d');
+        g.scale(scale, scale);
+        g.drawImage(img, 0, 0, GINGRICH_W, GINGRICH_H);
+        return c;
+    } finally { URL.revokeObjectURL(url); }
 }
 
 // =============================================================================

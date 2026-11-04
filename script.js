@@ -85,10 +85,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const ugsCheckbox         = document.getElementById('ugsCheckbox');
     const notesTextarea       = document.getElementById('notesTextarea');
     const getLocationBtn      = document.getElementById('getLocationBtn');
-    // Notes tab
-    const standNotesTextarea  = document.getElementById('standNotesTextarea');
-    const clearNotesBtn       = document.getElementById('clearNotesBtn');
-    const notesSavedStatus    = document.getElementById('notesSavedStatus');
+    // Area notes (Data tab → Area Notes)
+    const areaNotesTextarea   = document.getElementById('areaNotesTextarea');
+    const areaNotesSavedStatus = document.getElementById('areaNotesSavedStatus');
     // Dark mode
     const darkModeSelect      = document.getElementById('darkModeSelect');
     // Install prompt
@@ -151,7 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tallySummaryCards   = document.getElementById('tallySummaryCards');
     const tallyResults        = document.getElementById('tallyResults');
     const tallyChartsContainer = document.getElementById('tallyChartsContainer');
-    const calculateStockingBtn = document.getElementById('calculateStockingBtn');
     const stockingResults     = document.getElementById('stockingResults');
     const stockingStatsTable  = document.getElementById('stockingStatsTable');
     const stockingNoData      = document.getElementById('stockingNoData');
@@ -187,7 +185,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSpeciesList  = [];
     let autosaveTimer       = null;
     let autosaveInterval    = null;
-    let stockingChartInstance = null;
 
     // Feedback timeout handles
     let feedbackTimeout = null, settingsFeedbackTimeout = null;
@@ -235,7 +232,6 @@ document.addEventListener('DOMContentLoaded', () => {
         currentProject.data = collectedData;
         currentProject.plot = currentPlotNumber;
         currentProject.areaIdx = currentAreaIndex;
-        if (standNotesTextarea && notesDirty) { currentProject.notes = standNotesTextarea.value; notesDirty = false; }
         const ok = Store.saveProject(currentProject);
         renderProjectMeta();
         return ok;
@@ -265,13 +261,14 @@ document.addEventListener('DOMContentLoaded', () => {
     /** Shows a project: its trees, plot position, notes and recommendations. */
     function openProject(p, { quiet = false } = {}) {
         flushNotes();
+        closeAreaNotes(); closePlots();
         currentProject = p;
+        if (!p.areaNotes || typeof p.areaNotes !== 'object') p.areaNotes = {};
         Store.setCurrentId(p.id);
         collectedData = Array.isArray(p.data) ? p.data : [];
         collectedData.forEach((e, i) => { if (!e.id) e.id = Date.now() + i; });
         currentPlotNumber = p.plot || 1;
         currentAreaIndex = p.areaIdx || 0;
-        if (standNotesTextarea) standNotesTextarea.value = p.notes || '';
         notesDirty = false;
         if (projectNameInput) projectNameInput.value = p.name;
         currentLocation = null;
@@ -512,6 +509,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
         const useDark = currentDarkMode === 'on' || (currentDarkMode === 'system' && prefersDark);
         document.body.classList.toggle('dark-mode', useDark);
+        if (document.getElementById('tab-tally')?.classList.contains('active')) renderStockingChart();
     }
 
     function updateSaveBtnLabel() {
@@ -725,11 +723,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /** The line above the counters: project name, "Area A · Plot 3", and the Area Notes dot. */
+    function updateDataStrip() {
+        const name = document.getElementById('dataProjectName');
+        const line = document.getElementById('dataContextLine');
+        if (name) name.textContent = currentProject?.name || '';
+        if (line) line.textContent = `Area ${areaLetters[currentAreaIndex]} · Plot ${currentPlotNumber}`;
+        const dot = document.querySelector('#areaNotesBtn .tool-dot');
+        const has = !!String(currentProject?.areaNotes?.[areaLetters[currentAreaIndex]] || '').trim();
+        if (dot) dot.hidden = !has;
+        document.getElementById('areaNotesBtn')?.classList.toggle('has-notes', has);
+    }
+
     function updatePlotDisplay() {
         if (plotNumberDisplay) plotNumberDisplay.textContent = currentPlotNumber;
         if (plotDecrementBtn) plotDecrementBtn.disabled = currentPlotNumber <= MIN_PLOT_NUMBER;
         if (plotIncrementBtn) plotIncrementBtn.disabled = currentPlotNumber >= MAX_PLOT_NUMBER;
         updatePlotTreeCount();
+        updateDataStrip();
     }
 
     function updateAreaDisplay() {
@@ -737,6 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (areaDecrementBtn) areaDecrementBtn.disabled = currentAreaIndex <= 0;
         if (areaIncrementBtn) areaIncrementBtn.disabled = currentAreaIndex >= areaLetters.length - 1;
         updatePlotTreeCount();
+        updateDataStrip();
     }
 
     function renderEntries() {
@@ -860,28 +872,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Stats table
         if (stockingStatsTable) {
-            let html = '<table><thead><tr><th>Area</th><th>Plots</th><th>Total TPA</th><th>Total BA/Ac</th><th>Cut TPA</th><th>Cut BA/Ac</th><th>Leave TPA</th><th>Leave BA/Ac</th></tr></thead><tbody>';
+            const f0 = v => v.toFixed(0), f1 = v => v.toFixed(1);
+            const levelCls = l => (l === 'Overstocked' ? 'stk-over' : l === 'Fully stocked' ? 'stk-full' : 'stk-under');
+            const anyCut = areaStats.some(s => s.cutTpa > 0);
+            let html = `<table><thead><tr><th>Area</th><th>Plots</th><th>TPA</th><th>BA/Ac</th><th>QMD</th><th>Stocking</th>${anyCut ? '<th>Cut TPA</th><th>Cut BA/Ac</th><th>Leave TPA</th><th>Leave BA/Ac</th><th>After Cut</th>' : ''}</tr></thead><tbody>`;
             areaStats.forEach(s => {
                 html += `<tr>
                     <td><strong>${s.area}</strong></td>
                     <td>${s.numPlots}</td>
-                    <td>${s.totalTpa.toFixed(1)}</td>
-                    <td>${s.totalBa.toFixed(1)}</td>
-                    <td>${s.cutTpa.toFixed(1)}</td>
-                    <td>${s.cutBa.toFixed(1)}</td>
-                    <td>${s.leaveTpa.toFixed(1)}</td>
-                    <td>${s.leaveBa.toFixed(1)}</td>
+                    <td>${f0(s.totalTpa)}</td>
+                    <td>${f1(s.totalBa)}</td>
+                    <td>${f1(s.totalQmd)}"</td>
+                    <td><span class="${levelCls(s.totalLevel)}">${f0(s.totalPct)}% · ${s.totalLevel}</span></td>
+                    ${anyCut ? `<td>${f0(s.cutTpa)}</td><td>${f1(s.cutBa)}</td><td>${f0(s.leaveTpa)}</td><td>${f1(s.leaveBa)}</td>
+                    <td>${s.cutTpa > 0 ? `<span class="${levelCls(s.leaveLevel)}">${f0(s.leavePct)}% · ${s.leaveLevel}</span>` : '—'}</td>` : ''}
                 </tr>`;
             });
             html += '</tbody></table>';
             stockingStatsTable.innerHTML = html;
         }
 
-        // Delegate chart rendering to charts.js
-        const canvas = document.getElementById('stockingChartCanvas');
-        if (!canvas) return;
-        if (stockingChartInstance) { try { stockingChartInstance.destroy(); } catch(e) {} stockingChartInstance = null; }
-        stockingChartInstance = buildStockingChart(areaStats, canvas);
+        renderGingrichInto(document.getElementById('stockingChart'), areaStats);
     }
 
     function renderTallyTab() {
@@ -937,6 +948,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayTallyResults(generateTallyData(subset));
             }
         }
+
+        // Gingrich stocking chart (every Area)
+        renderStockingChart();
 
         // In-app charts — charts.js manages instances
         tallyChartInstances.forEach(c => { try { c.destroy(); } catch(e) {} });
@@ -1128,14 +1142,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const allAreaStats = calculateStandStocking(collectedData, selBaf);
                         if (allAreaStats?.length) {
-                            const gCanvas = document.createElement('canvas');
-                            gCanvas.width = 1200; gCanvas.height = 700;
-                            const gInst = buildStockingChartExport(allAreaStats, gCanvas);
-                            if (gInst) {
-                                await new Promise(r => setTimeout(r, 300));
-                                await handleCanvasPng(gCanvas, `${nameBase}_Gingrich_Stocking.png`);
-                                try { gInst.destroy(); } catch(e) {}
-                            }
+                            const gCanvas = await buildGingrichCanvas(allAreaStats);
+                            await handleCanvasPng(gCanvas, `${nameBase}_Gingrich_Stocking.png`);
                         }
                     } catch(e) { console.error('Gingrich export error:', e); }
 
@@ -1194,11 +1202,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 await handleTextFile(raw + tallyCsv + plotCsv + reportCsv, csvFilename);
             }
 
-            // Stand notes
-            const notesText = getStandNotesText();
+            // Area notes
+            const notesText = getAreaNotesText();
             if (notesText) {
-                const header = `TimberTally Stand Notes\nProject: ${projectNameInput?.value.trim() || 'Untitled'}\nExported: ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
-                await handleTxtFile(header + notesText, `${projBase}_StandNotes_${ts}.txt`);
+                const header = `TimberTally Area Notes\nProject: ${projectNameInput?.value.trim() || 'Untitled'}\nExported: ${new Date().toLocaleString()}\n${'='.repeat(50)}\n\n`;
+                await handleTxtFile(header + notesText, `${projBase}_AreaNotes_${ts}.txt`);
             }
 
             if (zipMode) {
@@ -1574,6 +1582,7 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.hidden = !isActive;
         });
         if (tabId === 'tally') renderTallyTab();
+        if (tabId === 'takeData') updateDataStrip();
         if (tabId === 'recs') window.TTRecs?.render();
     }
 
@@ -1897,8 +1906,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Tally area selector
     if (tallyAreaSelect) tallyAreaSelect.addEventListener('change', renderTallyTab);
 
-    // Stocking chart
-    if (calculateStockingBtn) calculateStockingBtn.addEventListener('click', renderStockingChart);
+    // Stocking chart: redraw at the new width while the tab is open.
+    let stockingResizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(stockingResizeTimer);
+        stockingResizeTimer = setTimeout(() => { if (document.getElementById('tab-tally')?.classList.contains('active')) renderStockingChart(); }, 200);
+    });
 
     // Compass
     if (showCompassBtn) {
@@ -1938,49 +1951,250 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ============================================================
     // ============================================================
-    // NOTES TAB
+    // AREA NOTES (Data tab → Area Notes): one notes box per Area of the open project
     // ============================================================
     let notesSaveTimeout = null;
-    /** Typed into Stand Notes since the last save. */
+    /** Typed into Area Notes since the last save. */
     let notesDirty = false;
+    let notesArea = null;
+    const areaNotesModal = document.getElementById('areaNotesModal');
+    const areaNotesSelect = document.getElementById('areaNotesSelect');
 
-    function saveStandNotes() {
+    const areaNotesOf = letter => String(currentProject?.areaNotes?.[letter] || '');
+
+    /** Copies the box into the project and saves it. */
+    function saveAreaNotes() {
         clearTimeout(notesSaveTimeout);
-        notesDirty = true;
+        if (!currentProject || !notesArea || !areaNotesTextarea) return;
+        currentProject.areaNotes ||= {};
+        const v = areaNotesTextarea.value;
+        if (v.trim()) currentProject.areaNotes[notesArea] = v; else delete currentProject.areaNotes[notesArea];
         const ok = saveSessionData();
-        if (notesSavedStatus && ok) {
-            notesSavedStatus.textContent = '✓ Saved';
-            notesSaveTimeout = setTimeout(() => { if (notesSavedStatus) notesSavedStatus.textContent = ''; }, 2000);
+        updateDataStrip();
+        if (areaNotesSavedStatus && ok) {
+            areaNotesSavedStatus.textContent = '✓ Saved';
+            notesSaveTimeout = setTimeout(() => { if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = ''; }, 2000);
         }
     }
     /** Writes notes typed in the last moment (before a project switch, or when the app is hidden). */
     function flushNotes() {
-        if (notesDirty && currentProject) saveStandNotes();
+        if (notesDirty && currentProject) { notesDirty = false; saveAreaNotes(); }
     }
 
-    function getStandNotesText() {
-        return standNotesTextarea?.value?.trim() || '';
+    function areaNotesOptions() {
+        const withNotes = Object.keys(currentProject?.areaNotes || {}).filter(a => areaNotesOf(a).trim());
+        return [...new Set([...window.ttGetDataAreas(), ...withNotes, areaLetters[currentAreaIndex]])].sort();
+    }
+    function showAreaNotesFor(letter) {
+        flushNotes();
+        notesArea = letter;
+        if (areaNotesSelect) {
+            areaNotesSelect.innerHTML = areaNotesOptions().map(a => `<option value="${a}">Area ${a}${areaNotesOf(a).trim() ? ' ✎' : ''}</option>`).join('');
+            areaNotesSelect.value = letter;
+        }
+        if (areaNotesTextarea) areaNotesTextarea.value = areaNotesOf(letter);
+        if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = '';
+    }
+    function openAreaNotes() {
+        if (!areaNotesModal) return;
+        showAreaNotesFor(areaLetters[currentAreaIndex]);
+        areaNotesModal.style.display = 'flex';
+        setTimeout(() => areaNotesTextarea?.focus(), 50);
+    }
+    function closeAreaNotes() {
+        if (!areaNotesModal || areaNotesModal.style.display !== 'flex') return;
+        flushNotes();
+        areaNotesModal.style.display = 'none';
+        notesArea = null;
     }
 
-    if (standNotesTextarea) {
-        standNotesTextarea.addEventListener('input', () => {
-            notesDirty = true;
-            clearTimeout(notesSaveTimeout);
-            notesSaveTimeout = setTimeout(saveStandNotes, 600);
-            if (notesSavedStatus) notesSavedStatus.textContent = '';
+    /** All Areas' notes as one text (for the .txt export). */
+    function getAreaNotesText() {
+        flushNotes();
+        return Object.keys(currentProject?.areaNotes || {}).sort()
+            .filter(a => areaNotesOf(a).trim())
+            .map(a => `Area ${a}\n${'-'.repeat(20)}\n${areaNotesOf(a).trim()}`)
+            .join('\n\n');
+    }
+
+    document.getElementById('areaNotesBtn')?.addEventListener('click', openAreaNotes);
+    document.getElementById('areaNotesDoneBtn')?.addEventListener('click', closeAreaNotes);
+    areaNotesModal?.addEventListener('click', e => { if (e.target === areaNotesModal) closeAreaNotes(); });
+    areaNotesSelect?.addEventListener('change', e => showAreaNotesFor(e.target.value));
+    areaNotesTextarea?.addEventListener('input', () => {
+        notesDirty = true;
+        clearTimeout(notesSaveTimeout);
+        notesSaveTimeout = setTimeout(() => { notesDirty = false; saveAreaNotes(); }, 600);
+        if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = '';
+    });
+    document.getElementById('areaNotesClearBtn')?.addEventListener('click', () => {
+        if (!notesArea || !areaNotesTextarea?.value.trim()) return;
+        if (!confirm(`Clear the notes for Area ${notesArea}? A safety copy is kept for 7 days.`)) return;
+        flushNotes();
+        if (!safetyCopy(`Area ${notesArea} notes cleared`)) return;
+        areaNotesTextarea.value = '';
+        saveAreaNotes();
+        showAreaNotesFor(notesArea);
+    });
+
+    // ============================================================
+    // PLOTS (Data tab → Plots): go to a plot, or move / renumber it (its trees go with it)
+    // ============================================================
+    const plotsModal = document.getElementById('plotsModal');
+    const plotsAreaSelect = document.getElementById('plotsAreaSelect');
+    const movePlotModal = document.getElementById('movePlotModal');
+    let plotsArea = null;
+    let movingPlot = null; // { area, plot }
+
+    /** Every plot in an Area with its tree count, BA/acre and GPS. */
+    function plotRows(letter) {
+        const entries = collectedData.filter(e => e.areaLetter === letter);
+        const nums = [...new Set(entries.map(e => parseInt(e.plotNumber, 10)).filter(n => !isNaN(n)))].sort((a, b) => a - b);
+        return nums.map(n => {
+            const trees = entries.filter(e => parseInt(e.plotNumber, 10) === n && !isEmptyPlot(e));
+            const all = entries.filter(e => parseInt(e.plotNumber, 10) === n);
+            const ba = trees.filter(e => parseFloat(e.dbh) > 0).length * currentBaf;
+            return { number: n, trees: trees.length, ba, hasGps: all.some(e => e.location?.lat != null) };
         });
     }
 
-    if (clearNotesBtn) {
-        clearNotesBtn.addEventListener('click', () => {
-            if (!standNotesTextarea?.value?.trim()) return;
-            if (confirm('Clear the stand notes for this project? A safety copy is kept for 7 days.')) {
-                if (!safetyCopy('Stand notes cleared')) return;
-                standNotesTextarea.value = '';
-                saveStandNotes();
-            }
-        });
+    function renderPlots() {
+        const table = document.getElementById('plotsTable');
+        if (!table || !plotsAreaSelect) return;
+        const areas = [...new Set([...window.ttGetDataAreas(), areaLetters[currentAreaIndex]])].sort();
+        if (!areas.includes(plotsArea)) plotsArea = areaLetters[currentAreaIndex];
+        plotsAreaSelect.innerHTML = areas.map(a => `<option value="${a}">Area ${a}</option>`).join('');
+        plotsAreaSelect.value = plotsArea;
+        const rows = plotRows(plotsArea);
+        if (!rows.length) { table.innerHTML = `<tbody><tr><td class="no-entries-msg">No plots in Area ${plotsArea} yet.</td></tr></tbody>`; return; }
+        const cur = areaLetters[currentAreaIndex];
+        table.innerHTML = '<thead><tr><th>Plot</th><th>Trees</th><th>BA/Ac</th><th>GPS</th><th></th></tr></thead><tbody>'
+            + rows.map(r => {
+                const isCur = plotsArea === cur && r.number === currentPlotNumber;
+                return `<tr class="${isCur ? 'plot-current' : ''}">
+                    <td>${r.number}${isCur ? ' <span class="plot-here">◀</span>' : ''}</td>
+                    <td>${r.trees ? r.trees : '<em class="plot-empty">empty</em>'}</td>
+                    <td>${r.ba.toFixed(0)}</td>
+                    <td>${r.hasGps ? '✓' : '—'}</td>
+                    <td class="plot-actions">
+                        <button type="button" class="control-button btn-secondary plot-btn" data-go="${r.number}" ${isCur ? 'disabled' : ''} title="Enter trees in this plot">Go</button>
+                        <button type="button" class="control-button btn-info plot-btn" data-move="${r.number}" title="Renumber or move to another Area">Move</button>
+                        ${r.trees === 0 ? `<button type="button" class="control-button delete-button plot-btn" data-remove="${r.number}" title="Remove this empty plot">&#10005;</button>` : ''}
+                    </td>
+                </tr>`;
+            }).join('') + '</tbody>';
     }
+    function openPlots() {
+        if (!plotsModal) return;
+        plotsArea = areaLetters[currentAreaIndex];
+        renderPlots();
+        plotsModal.style.display = 'flex';
+    }
+    function closePlots() {
+        if (movePlotModal) movePlotModal.style.display = 'none';
+        if (plotsModal) plotsModal.style.display = 'none';
+        movingPlot = null;
+    }
+
+    function goToPlot(letter, n) {
+        currentAreaIndex = Math.max(0, areaLetters.indexOf(letter));
+        currentPlotNumber = n;
+        updatePlotDisplay(); updateAreaDisplay(); calculateAndDisplayNeededPlots();
+        saveSessionData();
+        closePlots();
+        showFeedback(`Now entering Area ${letter}, Plot ${n}`);
+    }
+
+    function removeEmptyPlot(letter, n) {
+        if (!confirm(`Remove empty Plot ${n} (Area ${letter})? It will no longer count in the per-acre averages.`)) return;
+        collectedData = collectedData.filter(e => !(e.areaLetter === letter && parseInt(e.plotNumber, 10) === n && isEmptyPlot(e)));
+        renderEntriesKeepingPosition();
+        renderPlots();
+        showFeedback(`Empty Plot ${n} removed.`);
+    }
+
+    const treesIn = (letter, n) => collectedData.filter(e => e.areaLetter === letter && parseInt(e.plotNumber, 10) === n && !isEmptyPlot(e)).length;
+
+    function updateMoveWarning() {
+        if (!movingPlot) return;
+        const to = $id('movePlotArea').value, n = parseInt($id('movePlotNumber').value, 10);
+        const same = to === movingPlot.area && n === movingPlot.plot;
+        const there = n >= 1 && !same ? treesIn(to, n) : 0;
+        const warn = $id('movePlotWarn');
+        warn.hidden = !there;
+        warn.textContent = there ? `Plot ${n} in Area ${to} already has ${plural(there, 'tree')} — the two plots will be combined.` : '';
+        const ok = $id('movePlotOk');
+        ok.textContent = there ? 'Combine' : 'Move';
+        ok.disabled = !(n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) || same;
+    }
+    function openMovePlot(letter, n) {
+        movingPlot = { area: letter, plot: n };
+        const count = treesIn(letter, n);
+        $id('movePlotTitle').textContent = `Move Plot ${n}`;
+        $id('movePlotInfo').textContent = `Area ${letter}, Plot ${n} — ${count ? plural(count, 'tree') : 'empty plot'}. Its trees and GPS points move with it.`;
+        $id('movePlotArea').innerHTML = areaLetters.map(a => `<option value="${a}">${a}</option>`).join('');
+        $id('movePlotArea').value = letter;
+        $id('movePlotNumber').value = n;
+        updateMoveWarning();
+        movePlotModal.style.display = 'flex';
+        setTimeout(() => $id('movePlotNumber').select(), 50);
+    }
+    function doMovePlot() {
+        if (!movingPlot) return;
+        const from = movingPlot;
+        const to = $id('movePlotArea').value, n = parseInt($id('movePlotNumber').value, 10);
+        if (!(n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) || (to === from.area && n === from.plot)) return;
+        if (!safetyCopy(`Before moving Area ${from.area} Plot ${from.plot} to Area ${to} Plot ${n}`)) return;
+        const combined = treesIn(to, n) > 0;
+        const inFrom = e => e.areaLetter === from.area && parseInt(e.plotNumber, 10) === from.plot;
+        collectedData.forEach(e => { if (inFrom(e)) { e.areaLetter = to; e.plotNumber = n; } });
+        // One plot now: keep a single empty-plot record only if it has no trees at all.
+        const inTo = e => e.areaLetter === to && parseInt(e.plotNumber, 10) === n;
+        const hasTrees = collectedData.some(e => inTo(e) && !isEmptyPlot(e));
+        let keptEmpty = false;
+        collectedData = collectedData.filter(e => {
+            if (!inTo(e) || !isEmptyPlot(e)) return true;
+            if (hasTrees || keptEmpty) return false;
+            keptEmpty = true; return true;
+        });
+        // Entering trees in the plot that moved: follow it.
+        if (areaLetters[currentAreaIndex] === from.area && currentPlotNumber === from.plot) {
+            currentAreaIndex = areaLetters.indexOf(to);
+            currentPlotNumber = n;
+        }
+        movePlotModal.style.display = 'none';
+        movingPlot = null;
+        renderEntriesKeepingPosition();
+        plotsArea = from.area;
+        renderPlots();
+        window.TTRecs?.render();
+        showFeedback(`✓ Plot ${from.plot} ${combined ? 'combined into' : 'moved to'} Area ${to}, Plot ${n}`, false, 3500);
+    }
+
+    document.getElementById('plotsBtn')?.addEventListener('click', openPlots);
+    document.getElementById('plotsCloseBtn')?.addEventListener('click', closePlots);
+    plotsModal?.addEventListener('click', e => { if (e.target === plotsModal) closePlots(); });
+    plotsAreaSelect?.addEventListener('change', e => { plotsArea = e.target.value; renderPlots(); });
+    document.getElementById('plotsTable')?.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.go) goToPlot(plotsArea, parseInt(b.dataset.go, 10));
+        else if (b.dataset.move) openMovePlot(plotsArea, parseInt(b.dataset.move, 10));
+        else if (b.dataset.remove) removeEmptyPlot(plotsArea, parseInt(b.dataset.remove, 10));
+    });
+    $id('movePlotArea')?.addEventListener('change', updateMoveWarning);
+    $id('movePlotNumber')?.addEventListener('input', updateMoveWarning);
+    $id('movePlotCancel')?.addEventListener('click', () => { movePlotModal.style.display = 'none'; movingPlot = null; });
+    $id('movePlotOk')?.addEventListener('click', doMovePlot);
+    movePlotModal?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !$id('movePlotOk').disabled) doMovePlot();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape') return;
+        if (movePlotModal?.style.display === 'flex') { movePlotModal.style.display = 'none'; movingPlot = null; }
+        else if (plotsModal?.style.display === 'flex') closePlots();
+        else if (areaNotesModal?.style.display === 'flex') closeAreaNotes();
+    });
 
     // Screen lock, app switch or close: save anything still pending.
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushNotes(); saveSessionData(); } });
