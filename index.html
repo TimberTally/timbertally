@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>TimberTally</title>
+    <script>
+        // Catch Chrome's install offer as early as possible; it can arrive before script.js is ready.
+        window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.ttInstallEvent = e; });
+    </script>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -112,7 +116,7 @@
                 <div class="settings-actions">
                     <button type="button" id="manualUpdateCheckBtn" class="control-button btn-info">Check Updates</button>
                     <span id="updateCheckStatus" class="update-check-status"></span>
-                    <button type="button" id="installAppBtn" class="control-button btn-success" style="display:none;">&#128229; Install App</button>
+                    <button type="button" id="installAppBtn" class="control-button btn-success">&#128229; Install App</button>
                     <button type="button" id="showTreeKeyBtn" class="control-button btn-success">&#127807; Tree ID Key</button>
                     <button type="button" id="showInfoBtn" class="control-button btn-secondary">&#8505; Info</button>
                 </div>
@@ -514,6 +518,17 @@
                 <button type="button" id="editCancelBtn" class="control-button btn-secondary">Cancel</button>
                 <button type="button" id="editSaveBtn" class="control-button btn-success">Save</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Install App Modal -->
+    <div id="installModal" class="modal-overlay" style="display:none;" role="dialog" aria-label="Install TimberTally">
+        <div class="modal-content install-modal">
+            <button type="button" id="installCloseBtn" class="modal-close-btn" title="Close">&#215;</button>
+            <h2 id="installTitle">Install TimberTally</h2>
+            <div id="installSteps"></div>
+            <p class="notes-hint" style="margin-top:12px;">Installed, TimberTally opens from its own icon, full screen, and works with no signal. Your data stays on this device either way.</p>
+            <div class="recs-modal-actions"><button type="button" id="installOkBtn" class="control-button btn-success">OK</button></div>
         </div>
     </div>
 

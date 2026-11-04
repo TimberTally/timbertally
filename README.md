@@ -6,6 +6,19 @@ A Progressive Web App (PWA) designed for simple and efficient offline-first coll
 
 *Contact: timbertallyapp@gmail.com*
 
+## Installing the App
+
+Installed, TimberTally opens from its own tree icon, full screen, and works with no signal. Tap **⚙ Settings → Install App**: when the browser offers an install it happens in one tap; otherwise the button shows these steps for your device.
+
+| Device | How to install |
+|---|---|
+| Android (Chrome) | **⋮** menu → **Install app**. If it only says *Add to Home screen*, reopen the site and wait a few seconds — *Add to Home screen* makes a shortcut with a Chrome badge. |
+| Android (Samsung Internet) | **☰** → **Add page to** → **Home screen** |
+| iPhone / iPad | Open in **Safari** → **Share** → **Add to Home Screen** |
+| Windows / Mac (Chrome or Edge) | The install icon at the right end of the address bar, or the browser menu → install TimberTally |
+
+Firefox can't install web apps (on Android it adds a badged shortcut), so use Chrome, Edge, Samsung Internet or Safari. After an icon change, phones can take a day or two to show the new icon; removing and reinstalling shows it at once.
+
 ## Understanding the App
 
 *   [TimberTally Reference Guide](https://timbertally.github.io/TimberTally/timbertally_reference.html) — Calculations explained, CSV output guide, and proof of work in one tabbed document.
@@ -60,7 +73,7 @@ Accessed via the ⚙ Settings button in the header (collapses/expands; sticks to
 *   **Form Class** — Doyle only (70–86 in even steps; hidden for other rules).
 *   **Dark Mode** — Off, On, or System (follows device preference).
 
-Additional buttons in Settings: **Check Updates**, **Install App** (PWA install prompt, shown when available), **Tree ID Key**, and **ℹ Info** (opens the README).
+Additional buttons in Settings: **Check Updates**, **Install App** (always there: installs in one tap when the browser offers it, otherwise shows the install steps for your phone or computer), **Tree ID Key**, and **ℹ Info** (opens the README).
 
 ### Dark Mode
 Full dark mode with a forest-green palette. Toggled via Settings or automatically matched to system preference. All UI elements, tables, dropdowns, and backgrounds are fully themed — alternating table rows use distinct shades of dark green rather than white, keeping all text readable.
@@ -135,7 +148,7 @@ Every Area's notes in one `.txt` file, grouped by Area.
 ## How to Use
 
 1.  **Open the App** in a modern browser (Chrome, Firefox, Edge, Safari) on desktop or mobile. After the first load, the app works fully offline.
-2.  **Install (Optional)** — On supported browsers, accept the install prompt or use the "Install App" button in Settings for a native-like home screen experience.
+2.  **Install (Optional)** — Tap ⚙ Settings → **Install App**. See *Installing the App* below.
 3.  **Recover Data (If Prompted)** — If unsaved data from a previous session is found, confirm to restore it.
 4.  **Configure Settings** — Click ⚙ Settings to set BAF, Log Rule, Form Class and Dark Mode. Collapse when done.
 5.  **Set Plot # and Area** — Use the +/− buttons on the Data tab to set your current plot number and area letter. Reference the "Plots Needed" display beside the Notes field for sampling guidance.
@@ -186,7 +199,9 @@ Every Area's notes in one `.txt` file, grouped by Area.
 | `lib/chart.umd.min.js`, `lib/jszip.min.js` | Chart.js 4.4.1 and JSZip 3.10.1 (MIT), included so the app needs no CDN |
 | `manifest.json` | Web App Manifest for PWA install and theming |
 | `service-worker.js` | Caching and offline support |
-| `icon.png` | App icon |
+| `icon.png`, `icon-192.png` | App icon (512 and 192 px) |
+| `icon-maskable-512.png` | Android icon with the art inside the safe zone, so the circle/rounded crop keeps "TIMBER TALLY" |
+| `apple-touch-icon.png` | iPhone / iPad home-screen icon (180 px) |
 | `README.md` | This file |
 | `timbertally_reference.html` | Reference guide — calculations, CSV output, and proof of work |
 | `privacy.html` | Privacy policy |

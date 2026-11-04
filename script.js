@@ -2211,37 +2211,77 @@ document.addEventListener('DOMContentLoaded', () => {
         // ============================================================
     // INSTALL PROMPT (PWA)
     // ============================================================
+    // The Install App button in Settings is always there. With Chrome's install offer in hand it
+    // installs in one tap; otherwise it shows the steps for this phone or computer.
+    const isInstalled = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
     function showInstallUI(show) {
-        if (installBanner) installBanner.style.display = show ? 'flex' : 'none';
-        if (installAppBtn) installAppBtn.style.display = show ? 'inline-flex' : 'none';
+        if (installBanner) installBanner.style.display = show && !isInstalled() ? 'flex' : 'none';
     }
-
-    window.addEventListener('beforeinstallprompt', e => {
-        e.preventDefault();
+    function takeInstallEvent(e) {
         deferredInstallPrompt = e;
-        // Only show banner if not dismissed this session
         if (!sessionStorage.getItem('installDismissed')) showInstallUI(true);
-    });
+    }
+    if (window.ttInstallEvent) takeInstallEvent(window.ttInstallEvent);
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); takeInstallEvent(e); });
 
     window.addEventListener('appinstalled', () => {
         deferredInstallPrompt = null;
+        window.ttInstallEvent = null;
         showInstallUI(false);
+        showFeedback('✓ TimberTally installed. Open it from its icon.', false, 4000);
     });
 
+    function installSteps() {
+        const ua = navigator.userAgent || '';
+        const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const android = /Android/i.test(ua);
+        const firefox = /Firefox|FxiOS/i.test(ua);
+        const samsung = /SamsungBrowser/i.test(ua);
+        const edge = /Edg\//i.test(ua);
+        const safariIOS = ios && !/CriOS|FxiOS|EdgiOS/i.test(ua);
+        const li = items => `<ol class="install-steps">${items.map(t => `<li>${t}</li>`).join('')}</ol>`;
+        if (isInstalled()) return { title: 'TimberTally is installed', html: '<p>You are using the installed app. To reinstall, remove its icon first, then open the website and tap Install App again.</p>' };
+        if (ios && !safariIOS) return { title: 'Open in Safari to install', html: '<p>On iPhone and iPad, apps are added from <b>Safari</b>.</p>' + li(['Copy this page\'s address and open it in <b>Safari</b>.', 'Tap the <b>Share</b> button (square with an arrow).', 'Tap <b>Add to Home Screen</b>, then <b>Add</b>.']) };
+        if (ios) return { title: 'Install on iPhone / iPad', html: li(['Tap the <b>Share</b> button (square with an arrow) at the bottom of Safari.', 'Scroll down and tap <b>Add to Home Screen</b>.', 'Tap <b>Add</b>. TimberTally appears on your home screen.']) };
+        if (android && firefox) return { title: 'Use Chrome to install', html: '<p>Firefox adds a shortcut with a Firefox badge instead of installing the app.</p>' + li(['Open this page in <b>Chrome</b>.', 'Tap <b>Install App</b> in Settings again, or Chrome\'s <b>⋮</b> menu → <b>Install app</b>.']) };
+        if (android && samsung) return { title: 'Install on Android (Samsung Internet)', html: li(['Tap the <b>☰</b> menu at the bottom.', 'Tap <b>Add page to</b> → <b>Home screen</b>.', 'Tap <b>Add</b>.']) };
+        if (android) return { title: 'Install on Android', html: li(['Tap Chrome\'s <b>⋮</b> menu (top right).', 'Tap <b>Install app</b>. If you only see <b>Add to Home screen</b>, close the tab, reopen the site, wait a few seconds and look again — "Add to Home screen" makes a shortcut with a Chrome badge.', 'Tap <b>Install</b>.']) };
+        if (firefox) return { title: 'Use Chrome or Edge to install', html: '<p>Firefox on computers cannot install web apps. Open this page in <b>Chrome</b> or <b>Edge</b> and tap Install App again.</p>' };
+        if (edge) return { title: 'Install on this computer (Edge)', html: li(['Click the <b>App available</b> icon at the right end of the address bar, or the <b>…</b> menu → <b>Apps</b> → <b>Install TimberTally</b>.', 'Click <b>Install</b>.']) };
+        return { title: 'Install on this computer', html: li(['Click the <b>install</b> icon (a monitor with a down arrow) at the right end of Chrome\'s address bar, or the <b>⋮</b> menu → <b>Cast, save and share</b> → <b>Install page as app</b>.', 'Click <b>Install</b>.']) + '<p class="notes-hint">On a Mac with Safari: <b>File</b> → <b>Add to Dock</b>.</p>' };
+    }
+    function showInstallSteps() {
+        const m = document.getElementById('installModal');
+        if (!m) return;
+        const { title, html } = installSteps();
+        document.getElementById('installTitle').textContent = title;
+        document.getElementById('installSteps').innerHTML = html;
+        m.style.display = 'flex';
+    }
     async function triggerInstall() {
-        if (!deferredInstallPrompt) return;
-        deferredInstallPrompt.prompt();
-        const { outcome } = await deferredInstallPrompt.userChoice;
-        if (outcome === 'accepted') deferredInstallPrompt = null;
+        const ev = deferredInstallPrompt || window.ttInstallEvent;
+        if (!ev) { showInstallSteps(); return; }
+        try {
+            ev.prompt();
+            const { outcome } = await ev.userChoice;
+            if (outcome === 'accepted') { deferredInstallPrompt = null; window.ttInstallEvent = null; }
+        } catch (e) { showInstallSteps(); }
         showInstallUI(false);
     }
 
     if (installAcceptBtn) installAcceptBtn.addEventListener('click', triggerInstall);
-    if (installAppBtn)    installAppBtn.addEventListener('click', triggerInstall);
+    if (installAppBtn) {
+        installAppBtn.addEventListener('click', triggerInstall);
+        if (isInstalled()) installAppBtn.innerHTML = '&#10003; App Installed';
+    }
     if (installDismissBtn) installDismissBtn.addEventListener('click', () => {
         showInstallUI(false);
         sessionStorage.setItem('installDismissed', '1');
     });
+    const closeInstall = () => { const m = document.getElementById('installModal'); if (m) m.style.display = 'none'; };
+    document.getElementById('installCloseBtn')?.addEventListener('click', closeInstall);
+    document.getElementById('installOkBtn')?.addEventListener('click', closeInstall);
+    document.getElementById('installModal')?.addEventListener('click', e => { if (e.target.id === 'installModal') closeInstall(); });
 
     // ============================================================
     // INITIALIZATION

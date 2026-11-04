@@ -1789,3 +1789,8 @@ body.dark-mode .stand-chart-cell { background: #1a2712; }
 .area-notes-modal .stand-notes-textarea { min-height: 140px; }
 .sampling-line { margin-top: 0; }
 @media (max-width: 480px) { .regen-row { flex-direction: column; gap: 4px; } .regen-label { flex: none; padding-top: 0; } }
+
+/* Install App steps */
+.install-modal { max-width: 440px; width: 100%; }
+.install-steps { margin: 10px 0 0 1.2em; padding: 0; line-height: 1.5; }
+.install-steps li { margin-bottom: 8px; }
