@@ -21,23 +21,12 @@
     <script src="lib/chart.umd.min.js"></script>
     <script src="lib/jszip.min.js"></script>
     <script>
-        // Set --sticky-block-height so tab-nav sticks exactly under the header+settings block
+        // Set --sticky-block-height (height of the header block: save/backup bars, install banner, header)
         function updateStickyHeight() {
             const block = document.querySelector('.sticky-top-block');
             if (block) document.documentElement.style.setProperty('--sticky-block-height', block.offsetHeight + 'px');
         }
-        document.addEventListener('DOMContentLoaded', function() {
-            updateStickyHeight();
-            // Re-measure when settings panel toggles open/closed
-            const settingsBtn = document.getElementById('toggleSettingsBtn');
-            if (settingsBtn) {
-                settingsBtn.addEventListener('click', function() {
-                    // Settings panel animates, so re-measure after transition
-                    setTimeout(updateStickyHeight, 350);
-                    updateStickyHeight();
-                });
-            }
-        });
+        document.addEventListener('DOMContentLoaded', updateStickyHeight);
         window.addEventListener('resize', updateStickyHeight);
     </script>
 </head>
@@ -45,7 +34,7 @@
 
     <div id="appShell">
 
-        <!-- Sticky top block: install banner + header + settings panel together -->
+        <!-- Sticky top block: save/backup bars, install banner and header together -->
         <div class="sticky-top-block">
 
         <!-- Save error (shown on every screen size whenever a save fails) -->
@@ -71,24 +60,57 @@
             <div class="header-actions">
                 <span id="autosaveStatus" class="autosave-status" title="Autosave status"></span>
                 <button id="saveCsvBtn" class="header-save-btn" disabled title="Save everything as one ZIP">&#128190; Save ZIP</button>
-                <button id="toggleSettingsBtn" class="settings-toggle-btn" title="Show Forestry Settings" aria-expanded="false" aria-controls="settingsSection">&#9881; Settings</button>
+                <button type="button" id="helpBtn" class="settings-toggle-btn header-icon-btn" title="Help &amp; Tours" aria-label="Help and tours">?</button>
+                <button type="button" id="menuBtn" class="settings-toggle-btn header-icon-btn" title="Menu" aria-label="Menu" aria-haspopup="menu" aria-expanded="false" aria-controls="appMenu">&#9776;</button>
+            </div>
+            <!-- ☰ Menu (menu.js) -->
+            <div id="appMenu" class="app-menu" role="menu" aria-label="Menu" hidden>
+                <button type="button" role="menuitem" id="menuSettingsBtn" class="app-menu-item"><span class="app-menu-icon">&#9881;</span><span>Settings</span></button>
+                <button type="button" role="menuitem" id="menuHelpBtn" class="app-menu-item"><span class="app-menu-icon">?</span><span>Help &amp; Tours</span></button>
+                <a role="menuitem" id="menuQuickStart" class="app-menu-item" href="./TimberTally-Quick-Start.pdf" target="_blank" rel="noopener"><span class="app-menu-icon">&#128196;</span><span>Quick Start sheet</span></a>
+                <button type="button" role="menuitem" id="menuWordingBtn" class="app-menu-item"><span class="app-menu-icon">&#9998;</span><span>Standard Wording</span></button>
+                <button type="button" role="menuitem" id="installAppBtn" class="app-menu-item"><span class="app-menu-icon">&#128229;</span><span>Install App</span></button>
+                <button type="button" role="menuitem" id="manualUpdateCheckBtn" class="app-menu-item" data-keep-open><span class="app-menu-icon">&#8635;</span><span>Check for Updates <span id="updateCheckStatus" class="update-check-status"></span></span></button>
+                <button type="button" role="menuitem" id="showInfoBtn" class="app-menu-item"><span class="app-menu-icon">&#8505;</span><span>Info / Contact</span></button>
             </div>
         </div>
 
+        </div><!-- /sticky-top-block -->
+
         <!-- Settings Panel -->
-        <div id="settingsSection" class="settings-panel" hidden>
+        <div id="settingsSection" class="settings-panel settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
             <div class="settings-panel-inner">
-                <h2>Forestry Settings</h2>
+                <div class="settings-sheet-head">
+                    <h2 id="settingsTitle">Settings</h2>
+                    <button type="button" id="settingsDoneBtn" class="control-button btn-success">Done</button>
+                </div>
                 <div class="settings-grid">
                     <div class="input-group">
-                        <label for="bafSelect">BAF:</label>
+                        <label for="cruiseMethodSelect">Cruise Method: <button type="button" class="term-info" data-term="fixedPlot" aria-label="What is a fixed plot?">&#9432;</button></label>
+                        <select id="cruiseMethodSelect">
+                            <option value="baf" selected>Prism (BAF)</option>
+                            <option value="fixed">Fixed plot</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="plotSizeGroup" hidden>
+                        <label for="plotSizeSelect">Plot Size:</label>
+                        <select id="plotSizeSelect">
+                            <option value="0.25">1/4 ac (58.9 ft)</option>
+                            <option value="0.2">1/5 ac (52.7 ft)</option>
+                            <option value="0.1" selected>1/10 ac (37.2 ft)</option>
+                            <option value="0.05">1/20 ac (26.3 ft)</option>
+                            <option value="0.02">1/50 ac (16.7 ft)</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="bafGroup">
+                        <label for="bafSelect">BAF: <button type="button" class="term-info" data-term="baf" aria-label="What is BAF?">&#9432;</button></label>
                         <select id="bafSelect">
                             <option value="5">5</option><option value="10" selected>10</option>
                             <option value="20">20</option><option value="30">30</option><option value="40">40</option>
                         </select>
                     </div>
                     <div class="input-group">
-                        <label for="logRuleSelect">Log Rule:</label>
+                        <label for="logRuleSelect">Log Rule: <button type="button" class="term-info" data-term="logRule" aria-label="What is a log rule?">&#9432;</button></label>
                         <select id="logRuleSelect">
                             <option value="Doyle" selected>Doyle</option>
                             <option value="Scribner">Scribner</option>
@@ -96,11 +118,18 @@
                         </select>
                     </div>
                     <div class="input-group" id="formClassGroup">
-                        <label for="formClassSelect">Form Class:</label>
+                        <label for="formClassSelect">Form Class: <button type="button" class="term-info" data-term="formClass" aria-label="What is form class?">&#9432;</button></label>
                         <select id="formClassSelect">
                             <option value="70">70</option><option value="72">72</option><option value="74">74</option>
                             <option value="76">76</option><option value="78" selected>78</option><option value="80">80</option>
                             <option value="82">82</option><option value="84">84</option><option value="86">86</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="entryModeSelect">Collection:</label>
+                        <select id="entryModeSelect">
+                            <option value="wheel" selected>Scroll Wheel</option>
+                            <option value="grid">Tap Grid</option>
                         </select>
                     </div>
                     <div class="input-group">
@@ -112,28 +141,14 @@
                         </select>
                     </div>
                 </div>
-                <p class="settings-note">&#128190; <b>Save ZIP</b> puts everything in one file: a CSV, Summary Report and Graphs page (11&times;8.5&Prime; landscape) for each Area, the stocking chart for all Areas, and Area notes. BAF, Log Rule and Form Class above are used for all of it.</p>
+                <p class="settings-note">&#128190; <b>Save ZIP</b> puts everything in one file: a CSV, Stand &amp; Stock table, Summary Report and Graphs page (11&times;8.5&Prime; landscape) for each Area, a Property Summary when there are 2 or more Areas, the stocking chart for all Areas, and Area notes. The cruise method (BAF or fixed plot), Log Rule and Form Class above are used for all of it.</p>
                 <div class="settings-actions">
-                    <button type="button" id="manualUpdateCheckBtn" class="control-button btn-info">Check Updates</button>
-                    <span id="updateCheckStatus" class="update-check-status"></span>
-                    <button type="button" id="installAppBtn" class="control-button btn-success">&#128229; Install App</button>
                     <button type="button" id="showTreeKeyBtn" class="control-button btn-success">&#127807; Tree ID Key</button>
-                    <button type="button" id="showInfoBtn" class="control-button btn-secondary">&#8505; Info</button>
                 </div>
                 <div id="settingsFeedback" class="feedback-message" style="margin-top:8px;"></div>
             </div>
         </div>
 
-        </div><!-- end sticky-top-block -->
-
-        <!-- Tab Navigation -->
-        <nav class="tab-nav" role="tablist">
-            <button class="tab-btn active" data-tab="takeData" role="tab" aria-selected="true"><span class="tab-icon">&#128203;</span> Data</button>
-            <button class="tab-btn" data-tab="projects" role="tab" aria-selected="false"><span class="tab-icon">&#128193;</span> Projects</button>
-            <button class="tab-btn" data-tab="species" role="tab" aria-selected="false"><span class="tab-icon">&#127807;</span> Species</button>
-            <button class="tab-btn" data-tab="tally" role="tab" aria-selected="false"><span class="tab-icon">&#128202;</span> Tally</button>
-            <button class="tab-btn" data-tab="recs" role="tab" aria-selected="false"><span class="tab-icon">&#9998;</span> Recs</button>
-        </nav>
 
         <div id="tabContent">
 
@@ -165,30 +180,32 @@
                                 <button type="button" id="plotIncrementBtn" class="counter-btn" aria-label="Increase plot">+</button>
                             </div>
                         </div>
-                        <div id="plotGoalDisplay" class="plot-goal-line">
-                            Plots needed: <span id="neededPlotsValue">---</span>
+                        <div id="samplingPanel" class="sampling-panel">
+                            <button type="button" id="samplingToggle" class="sampling-summary" aria-expanded="false" aria-controls="samplingDetail"><span id="neededPlotsValue">Plots needed: ---</span> <span class="sampling-caret" aria-hidden="true">&#9656;</span></button>
+                            <div id="samplingDetail" class="sampling-detail" hidden></div>
                         </div>
-                        <div id="samplingLine" class="plot-goal-line sampling-line" hidden></div>
                     </div>
 
                     <div class="field-group entry-card">
-                        <label for="speciesSelect">Species</label>
+                        <div class="species-label-row"><label for="speciesSelect">Species</label><button type="button" id="editSpeciesLink" class="btn-link-small edit-species-link">edit species</button></div>
                         <div id="speciesQuick" class="species-quick" role="group" aria-label="Frequent species"></div>
                         <select id="speciesSelect" class="select-tall"></select>
                     </div>
 
                     <div class="dbh-logs-row entry-card">
                         <div class="dbh-group">
-                            <label>DBH</label>
+                            <label>DBH <button type="button" class="term-info" data-term="dbh" aria-label="What is DBH?">&#9432;</button></label>
                             <div id="dbhWheel"></div>
                             <input type="hidden" id="dbhSelect" value="10">
                         </div>
                         <div class="dbh-group">
-                            <label>Logs</label>
+                            <label>Logs <button type="button" class="term-info" data-term="logs" aria-label="What are logs?">&#9432;</button></label>
                             <div id="logsWheel"></div>
                             <input type="hidden" id="logsSelect" value="0">
                         </div>
                     </div>
+
+                    <div id="tapGridPanel" class="tap-grid-panel entry-card" hidden></div>
 
                     <div class="borderline-line">
                         <button type="button" id="borderlineBtn" class="link-btn" title="Borderline tree checker"><svg class="tt-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16 16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2"/></svg> <span id="borderlineText"></span></button>
@@ -205,6 +222,7 @@
                             <svg class="tt-icon chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
                             <span>UGS</span>
                         </label>
+                        <button type="button" class="term-info" data-term="ugs" aria-label="What is UGS?">&#9432;</button>
                         <div class="tool-row" role="group" aria-label="Tree tools">
                             <button type="button" id="getLocationBtn" class="tool-btn" title="GPS: record where this tree is" aria-label="GPS"><svg class="tt-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg></button>
                             <button type="button" id="showCompassBtn" class="tool-btn" title="Compass" aria-label="Compass"><svg class="tt-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM15.5 8.5l-2 5-5 2 2-5z"/></svg></button>
@@ -291,6 +309,16 @@
                 </div>
 
                 <div class="input-section">
+                    <h2>Merge Another Device</h2>
+                    <p class="notes-hint">Two people cruising the same property? Add the other phone's trees to the open project from its backup (.json) or a TimberTally CSV. Area letters are kept, a safety copy is taken first, and exact duplicates are skipped.</p>
+                    <div class="project-actions">
+                        <button type="button" id="mergeDeviceBtn" class="control-button btn-info">&#8644; Merge Another Device</button>
+                        <input type="file" id="mergeDeviceInput" accept=".json,.csv,application/json,text/csv" hidden>
+                    </div>
+                    <div id="mergeFeedback" class="feedback-message" style="margin-top:8px;"></div>
+                </div>
+
+                <div class="input-section">
                     <h2>Safety Copies</h2>
                     <p class="notes-hint">Taken automatically before anything is deleted or replaced, and kept for 7 days. Restoring one adds it as a new project.</p>
                     <div id="snapshotList"></div>
@@ -316,10 +344,10 @@
                 </div>
             </div><!-- end tab-projects -->
 
-            <!-- TAB 3: SPECIES -->
+            <!-- SPECIES (no tab button: opened from "edit species" on the Data tab) -->
             <div id="tab-species" class="tab-panel" role="tabpanel" hidden>
                 <div class="input-section">
-                    <h2>Manage Species</h2>
+                    <div class="species-mgmt-head"><h2>Manage Species</h2><button type="button" id="speciesDoneBtn" class="btn-success">Done</button></div>
                     <div class="species-add-group">
                         <label for="newSpeciesInput">Add New Species:</label>
                         <div class="input-with-button">
@@ -347,11 +375,20 @@
                 </div>
                 <div id="tallySummaryCards" class="summary-cards"></div>
 
+                <div class="input-section check-data-section" style="margin-top:10px;">
+                    <div class="check-data-head">
+                        <h3 class="section-subhead">Check Data</h3>
+                        <button type="button" id="checkDataBtn" class="control-button btn-info check-data-btn" aria-expanded="false" aria-controls="checkDataResults">&#10003; Check Data</button>
+                    </div>
+                    <div id="checkDataResults" class="check-data-results" hidden></div>
+                </div>
+
                 <div class="input-section" style="margin-top:10px;">
                     <h3 class="section-subhead">Gingrich Stocking Chart</h3>
                     <p class="stocking-desc">Gingrich (1967) stocking guide for upland hardwoods, from basal area and trees per acre. Every Area is shown: the dot is the stand as cruised; when trees are marked Cut, the arrow points to the stand left after the cut.</p>
                     <div id="stockingResults" class="stocking-results" style="display:none;">
                         <div id="stockingStatsTable" class="stocking-stats"></div>
+                        <div id="propertyTable" class="stocking-stats property-table" hidden></div>
                         <div id="stockingChart" class="stocking-chart-wrapper"></div>
                     </div>
                     <div id="stockingNoData" class="stocking-nodata" style="display:none;">
@@ -429,6 +466,13 @@
             </div><!-- end tab-recs -->
 
         </div><!-- end tabContent -->
+        <!-- Tab bar: fixed at the bottom of the screen -->
+        <nav class="tab-nav" role="tablist" aria-label="Main tabs">
+            <button class="tab-btn active" data-tab="takeData" role="tab" aria-selected="true"><svg class="tt-icon tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 3h8v3H8zM6 5H4v16h16V5h-2M8 11h8M8 15h8M8 19h5"/></svg><span class="tab-label">Data</span></button>
+            <button class="tab-btn" data-tab="projects" role="tab" aria-selected="false"><svg class="tt-icon tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h6l2 2h10v12H3z"/></svg><span class="tab-label">Projects</span></button>
+            <button class="tab-btn" data-tab="tally" role="tab" aria-selected="false"><svg class="tt-icon tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span class="tab-label">Tally</span></button>
+            <button class="tab-btn" data-tab="recs" role="tab" aria-selected="false"><svg class="tt-icon tab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg><span class="tab-label">Recs</span></button>
+        </nav>
 
     </div><!-- end appShell -->
 
@@ -545,6 +589,10 @@
             <p class="notes-hint">Notes and regeneration for this Area of the open project. Saved as you go and included in the Area Notes file in the ZIP.</p>
             <textarea id="areaNotesTextarea" class="stand-notes-textarea" placeholder="Stand observations, site conditions, ownership info, compass bearings, GPS waypoints..."></textarea>
             <div id="areaNotesSavedStatus" class="notes-saved-status"></div>
+            <div class="input-group area-acres-row">
+                <label for="areaAcresInput">Acres in this Area <span class="regen-hint">optional: for property totals</span></label>
+                <input type="number" id="areaAcresInput" min="0" step="0.1" inputmode="decimal" placeholder="e.g. 24.5">
+            </div>
 
             <div class="regen-block">
                 <h3 class="regen-title">Regeneration <span class="regen-hint">tap to pick, tap again to clear</span></h3>
@@ -647,8 +695,20 @@
     <script src="forestry-calc.js" defer></script>
     <script src="charts.js" defer></script>
     <script src="script.js" defer></script>
+    <script src="glossary.js" defer></script>
+    <script src="tap-grid.js" defer></script>
+    <script src="property.js" defer></script>
+    <script src="merge.js" defer></script>
     <script src="kentucky-counties.js" defer></script>
     <script src="recommendations-data.js" defer></script>
+    <script src="wording.js" defer></script>
     <script src="recommendations.js" defer></script>
+    <script src="twig-key.js" defer></script>
+    <script src="csv-match.js" defer></script>
+    <script src="plot-export.js" defer></script>
+    <script src="check-data.js" defer></script>
+    <script src="tour.js" defer></script>
+    <script src="info.js" defer></script>
+    <script src="menu.js" defer></script>
 </body>
 </html>

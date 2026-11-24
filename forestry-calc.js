@@ -40,6 +40,23 @@ function getTreeVolume(dbhStr, logsStr, logRule, formClass = 78) {
     } catch (e) { return 0; }
 }
 
+/** Log counts the Data tab offers above 10" (the wheel and Tap Grid), before limiting by DBH. */
+const LOG_COUNT_CHOICES = ['0.5','1','1.5','2','2.5','3','3.5','4','4.5','5','5.5','6'];
+/**
+ * The log counts every volume table (Doyle, Scribner, International) has a value for at
+ * this DBH, as the Data tab shows them ('1', '1.5' …). Empty for trees 10" and under.
+ */
+function logsChoicesFor(dbh) {
+    const d = String(parseInt(dbh, 10));
+    const tables = [DOYLE_FC78_VOLUMES, SCRIBNER_FC78_VOLUMES, INTERNATIONAL_FC78_VOLUMES];
+    return LOG_COUNT_CHOICES.filter(v => tables.every(t => (t[d]?.[parseFloat(v).toFixed(1)] || 0) > 0));
+}
+/** The largest log count the volume tables hold for this DBH (0 when none). */
+function maxLogsFor(dbh) {
+    const c = logsChoicesFor(dbh);
+    return c.length ? parseFloat(c[c.length - 1]) : 0;
+}
+
 /**
  * Classify a tree by DBH into a standard size class.
  * @param {number|string} dbh
@@ -56,10 +73,62 @@ function getDbhClass(dbh) {
     return 'Other';
 }
 
+// =============================================================================
+// CRUISE METHOD — prism (BAF) or fixed-radius plots
+// Every calculation takes a `cruise` argument: a number is a BAF (as before);
+// { method: 'fixed', plotAcres } is a fixed plot. The helpers below are the
+// only place the expansion factor is worked out.
+// =============================================================================
+const FIXED_PLOT_SIZES = [
+    { acres: 0.25, label: '1/4' }, { acres: 0.2, label: '1/5' }, { acres: 0.1, label: '1/10' },
+    { acres: 0.05, label: '1/20' }, { acres: 0.02, label: '1/50' }
+];
+function isFixedCruise(cruise) { return !!cruise && typeof cruise === 'object' && cruise.method === 'fixed' && cruise.plotAcres > 0; }
+/** Trees per acre one tally tree stands for (BAF / tree BA, or 1 / plot acres). */
+function treeExpansion(dbh, cruise) {
+    const d = parseFloat(dbh);
+    if (isFixedCruise(cruise)) return 1 / cruise.plotAcres;
+    const ba = BA_CONST * Math.pow(d, 2);
+    return ba > 0 ? Number(cruise) / ba : 0;
+}
+/** Basal area per acre (sq ft) one tally tree stands for (BAF, or tree BA / plot acres). */
+function treeBaPerAcre(dbh, cruise) {
+    if (isFixedCruise(cruise)) { const d = parseFloat(dbh); return d > 0 ? BA_CONST * d * d / cruise.plotAcres : 0; }
+    return Number(cruise);
+}
+/** Fixed plot radius in feet: sqrt(acres * 43560 / pi). */
+function fixedPlotRadiusFt(acres) { return acres > 0 ? Math.sqrt(acres * 43560 / Math.PI) : 0; }
+function fixedPlotFraction(acres) { const m = FIXED_PLOT_SIZES.find(p => p.acres === acres); return m ? m.label : String(acres); }
+/** "BAF 10" or "Fixed 1/5 ac". */
+function cruiseLabel(cruise) { return isFixedCruise(cruise) ? `Fixed ${fixedPlotFraction(cruise.plotAcres)} ac` : `BAF ${cruise}`; }
+/** CSV header part: "BAF=10" or "Plot=0.2 ac". */
+function cruiseCsvTag(cruise, sep = '=') { return isFixedCruise(cruise) ? `Plot${sep}${cruise.plotAcres} ac` : `BAF${sep}${cruise}`; }
+/** File name part: "BAF10" or "FIX0.2ac". */
+function cruiseFileTag(cruise) { return isFixedCruise(cruise) ? `FIX${cruise.plotAcres}ac` : `BAF${cruise}`; }
+
+/**
+ * A plot's identity: Area letter + plot number ("A|1"), or null when the plot number is
+ * missing. Plot 1 in Area A and plot 1 in Area B are different plots.
+ */
+function plotKey(e) {
+    if (!e || e.plotNumber == null) return null;
+    const n = parseInt(e.plotNumber, 10);
+    if (isNaN(n)) return null;
+    return `${e.areaLetter || ''}|${n}`;
+}
+function comparePlotKeys(a, b) {
+    const [aa, an] = a.split('|'), [ba, bn] = b.split('|');
+    return aa === ba ? Number(an) - Number(bn) : (aa < ba ? -1 : 1);
+}
+/** Plots needed for ±E % sampling error at t = 2: ceil((t·CV / E)²). */
+function plotsNeeded(cv, E, t = 2) {
+    return Math.ceil(Math.pow(t * cv / E, 2));
+}
+
 /**
  * Calculate the full forestry report for a subset of tree entries.
  * @param {Array}  dataSubset - Array of entry objects
- * @param {number} baf        - Basal Area Factor
+ * @param {number|Object} baf - BAF number, or { method: 'fixed', plotAcres }
  * @param {string} logRule    - Log rule name
  * @param {number} formClass  - Doyle form class
  * @returns {Object} Report with summary, standDistribution, speciesSummary1, speciesSummary2
@@ -68,16 +137,16 @@ function calculateForestryReport(dataSubset, baf, logRule, formClass) {
     const report = { summary: {}, standDistribution: {}, speciesSummary1: {}, speciesSummary2: {} };
     if (!dataSubset || dataSubset.length === 0) return report;
 
-    const plotNums = new Set(
-        dataSubset.map(e => e?.plotNumber).filter(p => p != null && !isNaN(parseInt(p, 10)))
-    );
+    // Plots are keyed by Area + plot number: Area A plot 1 and Area B plot 1 are two plots.
+    const plotNums = new Set(dataSubset.map(plotKey).filter(k => k != null));
     const numPlots = plotNums.size;
     if (numPlots === 0) { report.summary = { numberOfPlots: 0 }; return report; }
 
-    let totTrees = 0, cutTrees = 0, totTpaSum = 0, totVolSum = 0, cutTpaSum = 0, cutVolSum = 0;
+    let totTpaSum = 0, totVolSum = 0, cutTpaSum = 0, cutVolSum = 0;
     const specData = {};
     const CLS_KEYS = ['Sapling','Poletimber','Small Sawtimber','Medium Sawtimber','Large Sawtimber','Other','Invalid'];
-    const clsData = Object.fromEntries(CLS_KEYS.map(k => [k, {s:0,c:0,t:0,v:0,ct:0}]));
+    const clsData = Object.fromEntries(CLS_KEYS.map(k => [k, {s:0,c:0,t:0,v:0,ct:0,b:0,bc:0}]));
+    let totBaSum = 0, cutBaSum = 0;
 
     dataSubset.forEach(entry => {
         // Empty-plot records count toward the number of plots but hold no tree.
@@ -86,15 +155,16 @@ function calculateForestryReport(dataSubset, baf, logRule, formClass) {
         const spec = entry.species;
         const isCut = entry.cutStatus === 'Yes';
         if (isNaN(dbh) || dbh <= 0 || !spec?.trim()) {
+            // Counted as a stem in the INVALID row but given no BA (prism or fixed), so the
+            // Stand Distribution TOTALS agree with the summary BA/acre.
             clsData['Invalid'].s++;
             if (isCut) clsData['Invalid'].c++;
             return;
         }
         const dbhCls = getDbhClass(dbh);
-        totTrees++;
-        if (isCut) cutTrees++;
-        const baT  = BA_CONST * Math.pow(dbh, 2);
-        const tpaT = baT > 0 ? baf / baT : 0;
+        const tpaT = treeExpansion(dbh, baf);
+        const baPT = treeBaPerAcre(dbh, baf);
+        totBaSum += baPT; if (isCut) cutBaSum += baPT;
         const volT = getTreeVolume(entry.dbh, entry.logs, logRule, formClass);
         const vpaT = volT * tpaT;
         totTpaSum += tpaT; totVolSum += vpaT;
@@ -111,16 +181,16 @@ function calculateForestryReport(dataSubset, baf, logRule, formClass) {
         else if (dbhCls.includes('Sawtimber')) specData[spec].tpaSaw += tpaT;
 
         if (clsData[dbhCls]) {
-            clsData[dbhCls].s++; clsData[dbhCls].t += tpaT; clsData[dbhCls].v += vpaT;
-            if (isCut) { clsData[dbhCls].c++; clsData[dbhCls].ct += tpaT; }
+            clsData[dbhCls].s++; clsData[dbhCls].t += tpaT; clsData[dbhCls].v += vpaT; clsData[dbhCls].b += baPT;
+            if (isCut) { clsData[dbhCls].c++; clsData[dbhCls].ct += tpaT; clsData[dbhCls].bc += baPT; }
         }
     });
 
     const tpa    = numPlots > 0 ? totTpaSum / numPlots : 0;
     const tpaCut = numPlots > 0 ? cutTpaSum / numPlots : 0;
     const volPA  = numPlots > 0 ? totVolSum / numPlots : 0;
-    const baPA   = numPlots > 0 ? (totTrees * baf) / numPlots : 0;
-    const baPACut= numPlots > 0 ? (cutTrees * baf) / numPlots : 0;
+    const baPA   = numPlots > 0 ? totBaSum / numPlots : 0;
+    const baPACut= numPlots > 0 ? cutBaSum / numPlots : 0;
     const qmd    = tpa > 0 && baPA > 0 ? Math.sqrt((baPA / tpa) / BA_CONST) : 0;
 
     report.summary = {
@@ -131,18 +201,18 @@ function calculateForestryReport(dataSubset, baf, logRule, formClass) {
         totalVolPerAcre: volPA,
         volumePerAcreCut: numPlots > 0 ? cutVolSum / numPlots : 0,
         volumePerAcreLeave: volPA - (numPlots > 0 ? cutVolSum / numPlots : 0),
-        bafUsed: baf, logRuleUsed: logRule,
+        bafUsed: isFixedCruise(baf) ? null : baf, cruiseUsed: baf, logRuleUsed: logRule,
         formClassUsed: logRule === 'Doyle' ? formClass : 'N/A'
     };
 
     // Stand distribution by DBH class
     let sd = {percStems:0,baPA:0,baPACut:0,baPALeave:0,volPA:0,percBa:0,percVol:0,tpaCut:0,tpaLeave:0};
     CLS_KEYS.concat(['Invalid']).filter((v,i,a) => a.indexOf(v)===i).forEach(cls => {
-        const ci = clsData[cls] || {s:0,c:0,t:0,v:0,ct:0};
+        const ci = clsData[cls] || {s:0,c:0,t:0,v:0,ct:0,b:0,bc:0};
         const clsTpa   = numPlots > 0 ? ci.t / numPlots : 0;
         const clsVol   = numPlots > 0 ? ci.v / numPlots : 0;
-        const clsBa    = numPlots > 0 ? (ci.s * baf) / numPlots : 0;
-        const clsBaCut = numPlots > 0 ? (ci.c * baf) / numPlots : 0;
+        const clsBa    = numPlots > 0 ? ci.b / numPlots : 0;
+        const clsBaCut = numPlots > 0 ? ci.bc / numPlots : 0;
         const clsTpaCut= numPlots > 0 ? ci.ct / numPlots : 0;
         const pStems = tpa   > 0 ? (clsTpa / tpa)   * 100 : 0;
         const pBa    = baPA  > 0 ? (clsBa  / baPA)  * 100 : 0;
@@ -205,12 +275,11 @@ function calculatePlotStats(dataSubset, baf, logRule, formClass) {
     if (!dataSubset?.length) return null;
     const plots = {};
     dataSubset.forEach(e => {
-        if (e?.plotNumber) {
-            const n = parseInt(e.plotNumber, 10);
-            if (!isNaN(n)) { if (!plots[n]) plots[n] = []; plots[n].push(e); }
-        }
+        if (!e?.plotNumber) return;
+        const k = plotKey(e);
+        if (k != null) { if (!plots[k]) plots[k] = []; plots[k].push(e); }
     });
-    const plotNums = Object.keys(plots).map(Number).sort((a, b) => a - b);
+    const plotNums = Object.keys(plots).sort(comparePlotKeys);
     if (!plotNums.length) return null;
 
     const plotVols = plotNums.map(pn => {
@@ -219,9 +288,7 @@ function calculatePlotStats(dataSubset, baf, logRule, formClass) {
             if (!t?.dbh || !t?.logs) return;
             const dbh = parseFloat(t.dbh);
             if (isNaN(dbh) || dbh <= 0) return;
-            const ba = BA_CONST * Math.pow(dbh, 2);
-            if (ba <= 0) return;
-            vpa += getTreeVolume(t.dbh, t.logs, logRule, formClass) * (baf / ba);
+            vpa += getTreeVolume(t.dbh, t.logs, logRule, formClass) * treeExpansion(dbh, baf);
         });
         return Math.round(vpa);
     });
@@ -293,7 +360,7 @@ function gingrichLevel(pct) {
  * Per-area stocking for the Gingrich chart: the stand as cruised (Total), the
  * marked trees (Cut) and the residual stand after the cut (Leave).
  * @param {Array}  collectedData - Full dataset
- * @param {number} baf
+ * @param {number|Object} baf - BAF number, or { method: 'fixed', plotAcres }
  * @returns {Array|null}
  */
 function calculateStandStocking(collectedData, baf) {
@@ -313,7 +380,8 @@ function calculateStandStocking(collectedData, baf) {
             if (entry.emptyPlot) return;
             const dbh = parseFloat(entry.dbh);
             if (isNaN(dbh) || dbh <= 0) return;
-            const tpa = baf / (BA_CONST * dbh * dbh);  // trees/acre this tally tree stands for
+            // trees/acre this tally tree stands for (prism expression kept as before, to the last digit)
+            const tpa = isFixedCruise(baf) ? treeExpansion(dbh, baf) : baf / (BA_CONST * dbh * dbh);
             const buckets = entry.cutStatus === 'Yes' ? [acc.total, acc.cut] : [acc.total, acc.leave];
             buckets.forEach(b => { b.n += tpa; b.d2 += tpa * dbh * dbh; });
         });
@@ -336,6 +404,16 @@ function calculateStandStocking(collectedData, baf) {
 }
 
 /**
+ * One quoted CSV text cell: quotes doubled, and a leading = + - @ prefixed with ' so
+ * Excel / Sheets don't run it as a formula. Use for text only (numbers stay numbers).
+ */
+function csvCell(v) {
+    let s = v == null ? '' : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+}
+
+/**
  * Format a forestry report object as CSV-ready text.
  * @param {Object} report - Output of calculateForestryReport()
  * @returns {string}
@@ -348,7 +426,7 @@ function formatReportForCsv(report) {
     if (!report?.summary?.numberOfPlots) return "\n--- FORESTRY REPORT DATA ---\nError: Report incomplete.\n";
 
     const sum = report.summary;
-    let csv = `\n\n--- FORESTRY REPORT DATA (BAF=${sum.bafUsed}, Rule=${sum.logRuleUsed}${sum.logRuleUsed === 'Doyle' ? ', FC=' + sum.formClassUsed : ''}) ---\n`;
+    let csv = `\n\n--- FORESTRY REPORT DATA (${cruiseCsvTag(sum.cruiseUsed ?? sum.bafUsed)}, Rule=${sum.logRuleUsed}${sum.logRuleUsed === 'Doyle' ? ', FC=' + sum.formClassUsed : ''}) ---\n`;
     csv += `TOTAL VOLUME/ACRE (BF),${fmtI(sum.totalVolPerAcre)},,VOL/ACRE CUT (BF),${fmtI(sum.volumePerAcreCut)},,VOL/ACRE LEAVE (BF),${fmtI(sum.volumePerAcreLeave)}\n`;
     csv += `AVG DBH (QMD),${fmt(sum.avgTractDbh)},,TOTAL TREES/ACRE,${fmt(sum.totalTreesPerAcre)},,NUMBER OF PLOTS,${fmtI(sum.numberOfPlots)}\n`;
     csv += `TOTAL BA/ACRE,${fmt(sum.totalBaPerAcre)},,TREES/ACRE CUT,${fmt(sum.treesPerAcreCut)},,TREES/ACRE LEAVE,${fmt(sum.treesPerAcreLeave)}\n`;
@@ -363,19 +441,19 @@ function formatReportForCsv(report) {
     };
     CLS_ORDER.forEach(cls => {
         const d = report.standDistribution[cls] || {};
-        csv += `"${CLS_LABEL[cls] || cls}",${fmtP(d.percentTotalStems)},${fmt(d.baSqFtPerAcreCut)},${fmt(d.baSqFtPerAcreLeave)},${fmt(d.baSqFtPerAcreTotal)},${fmtP(d.percentBa)},${fmtI(d.volumeBfPerAcre)},${fmtP(d.percentVolume)},${fmt(d.tpaPerAcreCut)},${fmt(d.tpaPerAcreLeave)}\n`;
+        csv += `${csvCell(CLS_LABEL[cls] || cls)},${fmtP(d.percentTotalStems)},${fmt(d.baSqFtPerAcreCut)},${fmt(d.baSqFtPerAcreLeave)},${fmt(d.baSqFtPerAcreTotal)},${fmtP(d.percentBa)},${fmtI(d.volumeBfPerAcre)},${fmtP(d.percentVolume)},${fmt(d.tpaPerAcreCut)},${fmt(d.tpaPerAcreLeave)}\n`;
     });
 
     csv += "\nSPECIES COMPOSITION,STEMS (%),SAW (%),POLE (%),SAP (%)\n";
     [...Object.keys(report.speciesSummary1).filter(s => s !== 'TOTALS').sort(), 'TOTALS'].forEach(spec => {
         const d = report.speciesSummary1[spec] || {};
-        csv += `"${spec}",${fmtP(d.percentTotalStems)},${fmtP(d.sawtimberPercent)},${fmtP(d.poletimberPercent)},${fmtP(d.saplingPercent)}\n`;
+        csv += `${csvCell(spec)},${fmtP(d.percentTotalStems)},${fmtP(d.sawtimberPercent)},${fmtP(d.poletimberPercent)},${fmtP(d.saplingPercent)}\n`;
     });
 
     csv += '\nVOL/ACRE BY SPECIES,S SAW (12-17.9"),M SAW (18-23.9"),L SAW (24"+),TOTAL VOL/ACRE,VOL (%)\n';
     [...Object.keys(report.speciesSummary2).filter(s => s !== 'TOTALS').sort(), 'TOTALS'].forEach(spec => {
         const d = report.speciesSummary2[spec] || {};
-        csv += `"${spec}",${fmtI(d.volSmallPerAcre)},${fmtI(d.volMediumPerAcre)},${fmtI(d.volLargePerAcre)},${fmtI(d.totalSpeciesVolPerAcre)},${fmtP(d.percentTotalVolume)}\n`;
+        csv += `${csvCell(spec)},${fmtI(d.volSmallPerAcre)},${fmtI(d.volMediumPerAcre)},${fmtI(d.volLargePerAcre)},${fmtI(d.totalSpeciesVolPerAcre)},${fmtP(d.percentTotalVolume)}\n`;
     });
 
     return csv;

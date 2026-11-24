@@ -22,6 +22,8 @@
     --radius-md:     8px;
     --radius-lg:     12px;
     --tab-height:    46px;
+    /* Height of the bottom tab bar, home-bar inset included */
+    --bottom-tabs-h: calc(58px + env(safe-area-inset-bottom, 0px));
 }
 
 * { box-sizing: border-box; }
@@ -186,52 +188,140 @@ body.dark-mode .sticky-top-block {
     border-top: 1px solid var(--forest-border);
 }
 
+/* Settings as a full-height sheet (☰ Menu → Settings) with a Done button. */
+.settings-sheet {
+    position: fixed; inset: 0;
+    z-index: 1050;
+    background: rgba(0,0,0,0.55);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 10px calc(env(safe-area-inset-bottom, 0px) + 12px);
+    transition: none;
+}
+.settings-sheet .settings-panel-inner {
+    background: var(--bg-card);
+    max-width: 640px;
+    margin: 0 auto;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    min-height: calc(100% - 4px);
+    box-sizing: border-box;
+}
+.settings-sheet-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    position: sticky; top: -14px; z-index: 2;
+    background: var(--bg-card);
+    margin: -14px -16px 12px; padding: 12px 16px 8px;
+    border-bottom: 1px solid var(--forest-border);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.settings-sheet-head h2 { margin: 0 !important; border: none !important; padding: 0 !important; font-size: 1.1em !important; }
+body.sheet-open { overflow: hidden; }
+
+/* Header ? and ☰ buttons */
+.header-icon-btn { min-width: 34px; padding: 6px 9px; font-weight: 700; font-size: 1em; line-height: 1; }
+
+/* ☰ Menu: a drop-down list under the header's right edge. */
+.app-header { position: relative; }
+.app-menu {
+    position: absolute; right: 8px; top: calc(100% - 4px);
+    z-index: 1040;
+    min-width: 230px; max-width: calc(100vw - 16px);
+    background: var(--bg-card); color: var(--text-dark);
+    border: 1px solid var(--forest-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    padding: 4px 0;
+}
+.app-menu[hidden] { display: none; }
+.app-menu-item {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; box-sizing: border-box;
+    padding: 11px 14px;
+    background: none; border: none;
+    color: var(--text-dark); font: inherit; font-size: 0.95em;
+    text-align: left; text-decoration: none; cursor: pointer;
+}
+.app-menu-item:hover, .app-menu-item:focus-visible { background: var(--forest-pale); outline: none; }
+.app-menu-item:disabled { opacity: .6; cursor: default; }
+.app-menu-icon { width: 22px; text-align: center; color: var(--forest-dark); font-weight: 700; flex-shrink: 0; }
+.app-menu-item .update-check-status { margin-left: 6px; }
+
+/* Help & Tours sheet */
+.tt-help-modal { max-width: 460px; text-align: left; }
+.tt-help-row {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; box-sizing: border-box;
+    padding: 10px 8px; margin: 0;
+    background: none; border: none; border-bottom: 1px solid var(--forest-border);
+    color: var(--text-dark); font: inherit; text-align: left; text-decoration: none; cursor: pointer;
+}
+.tt-help-row:hover, .tt-help-row:focus-visible { background: var(--forest-pale); outline: none; }
+.tt-help-row i { font-style: normal; width: 26px; text-align: center; font-size: 1.15em; color: var(--forest-dark); flex-shrink: 0; }
+.tt-help-row b { display: block; }
+.tt-help-row small { display: block; color: var(--text-muted); font-size: .82em; margin-top: 1px; }
+.tt-help-sub { font-size: .78em; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin: 12px 8px 2px; }
+.tt-help-tours .tt-help-row { padding: 8px 8px 8px 46px; }
+.tt-help-install { font-size: .9em; line-height: 1.45; padding: 6px 8px 10px 46px; border-bottom: 1px solid var(--forest-border); }
+.tt-help-install p { margin: 4px 0; }
+.tt-help-foot { font-size: .85em; color: var(--text-muted); margin: 12px 8px 0; }
+.tt-help-foot a { color: inherit; }
+body.dark-mode .tt-help-modal, body.dark-mode .tt-wording-modal { color: var(--text-dark); }
+
 /* ============================
    TAB NAVIGATION
    ============================ */
+/* Fixed to the bottom of the screen (as in ForestScribe): icon over a short
+   label, the open tab highlighted, clear of the iPhone home bar. */
 .tab-nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 210;
     display: flex;
+    justify-content: center;
     background: var(--forest-dark);
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    position: sticky;
-    top: var(--sticky-block-height, 50px);
-    z-index: 99;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
 }
-.tab-nav::-webkit-scrollbar { display: none; }
 
 .tab-btn {
     flex: 1;
-    min-width: 70px;
-    height: var(--tab-height);
+    max-width: 140px;
+    min-height: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
     background: none;
     border: none;
-    border-bottom: 3px solid transparent;
+    border-top: 3px solid transparent;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
     color: rgba(255,255,255,0.65);
-    font-size: 0.82em;
+    font-size: 0.74em;
     font-weight: 600;
     cursor: pointer;
-    padding: 0 6px;
+    padding: 2px 4px 0;
     transition: color 0.2s, border-color 0.2s, background-color 0.2s;
     white-space: nowrap;
     letter-spacing: 0.2px;
 }
+.tab-btn .tab-icon { width: 22px; height: 22px; }
 .tab-btn:hover {
     color: rgba(255,255,255,0.9);
     background-color: rgba(255,255,255,0.08);
 }
 .tab-btn.active {
     color: #fff;
-    border-bottom-color: var(--accent-amber);
+    border-top-color: var(--accent-amber);
     background-color: rgba(255,255,255,0.12);
 }
 
 /* ============================
    TAB PANELS
    ============================ */
-#tabContent { flex: 1; }
+#tabContent { flex: 1; padding-bottom: calc(var(--bottom-tabs-h) + 16px); }
 
 .tab-panel { display: none; padding: 12px; }
 .tab-panel.active { display: block; }
@@ -241,7 +331,7 @@ body.dark-mode .sticky-top-block {
 #tab-notes.active {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - var(--sticky-block-height, 50px) - var(--tab-height, 46px));
+    height: calc(100dvh - var(--sticky-block-height, 50px) - var(--bottom-tabs-h) - 16px);
     overflow: hidden;
     padding: 12px;
     box-sizing: border-box;
@@ -313,7 +403,7 @@ label {
     display: block;
     margin-bottom: 4px;
     font-weight: 600;
-    color: var(--text-mid);
+    color: inherit;
     font-size: 0.92em;
 }
 
@@ -452,8 +542,8 @@ textarea { resize: vertical; min-height: 44px; }
     white-space: nowrap;
 }
 #neededPlotsValue {
-    font-weight: 700;
-    color: var(--forest-dark);
+    font-weight: 600;
+    color: inherit;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -829,7 +919,7 @@ input[type="file"] {
     margin: 0;
     font-size: 0.9em;
     font-weight: 600;
-    color: var(--text-mid);
+    color: inherit;
 }
 .tally-area-selector select {
     width: auto;
@@ -1021,7 +1111,7 @@ input[type="file"] {
    ============================ */
 .update-notification {
     position: fixed;
-    bottom: 20px; left: 50%;
+    bottom: calc(var(--bottom-tabs-h) + 12px); left: 50%;
     transform: translateX(-50%);
     background: #28a745;
     color: white;
@@ -1097,7 +1187,6 @@ input[type="file"] {
 
     .settings-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
 
-    .tab-btn { font-size: 0.75em; min-width: 60px; height: 42px; padding: 0 4px; }
 
     .tab-panel { padding: 8px; }
 
@@ -1141,6 +1230,7 @@ input[type="file"] {
 
     .header-save-btn { padding: 5px 8px; font-size: 0.8em; }
     .settings-toggle-btn { padding: 5px 8px; font-size: 0.8em; }
+    .header-icon-btn { min-width: 30px; padding: 5px 7px; font-size: 0.95em; }
 
     .output-controls h2 { font-size: 0.9em; }
     .output-ctrl-btns .control-button { padding: 5px 8px; font-size: 0.8em; }
@@ -1152,7 +1242,6 @@ input[type="file"] {
 
 /* Tiny phones */
 @media (max-width: 360px) {
-    .tab-btn { font-size: 0.68em; min-width: 54px; }
     .summary-cards { grid-template-columns: repeat(3, 1fr); }
 }
 
@@ -1308,9 +1397,12 @@ body.dark-mode {
 }
 body.dark-mode .app-header { background: linear-gradient(135deg, #1e3312 0%, #162a0e 100%); border-bottom-color: #3a5a28; }
 body.dark-mode .settings-panel { background: #162a0e; border-color: #3a5a28; }
+body.dark-mode .settings-sheet { background: rgba(0,0,0,0.65); }
+body.dark-mode .settings-sheet .settings-panel-inner, body.dark-mode .settings-sheet-head { background: #162a0e; }
+body.dark-mode .app-menu { background: #1a2712; }
 body.dark-mode .tab-nav { background: #162a0e; border-color: #3a5a28; }
 body.dark-mode .tab-btn { color: #7a9a60; }
-body.dark-mode .tab-btn.active { background: var(--bg-card); color: var(--forest-dark); }
+body.dark-mode .tab-btn.active { background: rgba(255,255,255,0.08); color: #e8f0e0; }
 body.dark-mode .tab-panel { background: var(--bg-page); }
 body.dark-mode .input-section { background: var(--bg-card); border-color: var(--forest-border); }
 body.dark-mode select, body.dark-mode input[type="text"], body.dark-mode textarea {
@@ -1479,17 +1571,6 @@ body.dark-mode .recs-preview th, body.dark-mode .recs-preview td { border-color:
 .recs-field { margin-bottom: 10px; }
 .recs-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
-/* Phones: stack tab icons over labels so all seven tabs fit without scrolling */
-@media (max-width: 520px) {
-    .tab-btn {
-        min-width: 0;
-        padding: 0 1px;
-        font-size: 0.7em;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        line-height: 1.15; letter-spacing: 0;
-    }
-    .tab-icon { font-size: 1.35em; }
-}
 
 /* ============================
    DATA TAB (ForestScribe entry form)
@@ -1627,8 +1708,8 @@ body.dark-mode .chip-toggle.on.ugs span, body.dark-mode .chip-toggle.on.ugs .chi
 
 /* Submit stays at the bottom of the screen while scrolling */
 .submit-sticky {
-    position: sticky; bottom: 0; z-index: 20;
-    padding-top: 8px; padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    position: sticky; bottom: var(--bottom-tabs-h); z-index: 20;
+    padding-top: 8px; padding-bottom: 8px;
     margin-bottom: 8px;
     background: linear-gradient(to bottom, transparent, var(--bg-page) 25%);
 }
@@ -1787,10 +1868,104 @@ body.dark-mode .stand-chart-cell { background: #1a2712; }
 .regen-species input { width: 100%; box-sizing: border-box; }
 .area-notes-modal { max-height: 92vh; overflow-y: auto; }
 .area-notes-modal .stand-notes-textarea { min-height: 140px; }
-.sampling-line { margin-top: 0; }
 @media (max-width: 480px) { .regen-row { flex-direction: column; gap: 4px; } .regen-label { flex: none; padding-top: 0; } }
 
 /* Install App steps */
 .install-modal { max-width: 440px; width: 100%; }
 .install-steps { margin: 10px 0 0 1.2em; padding: 0; line-height: 1.5; }
 .install-steps li { margin-bottom: 8px; }
+
+/* ---- Tap Grid collection mode (tap-grid.js) ---- */
+body.entry-grid .dbh-logs-row { display: none; }
+.tap-grid-panel[hidden] { display: none; }
+.tap-grid-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
+.tap-grid-head label { margin: 0; }
+.tap-grid-hint { font-size: 0.78em; color: var(--text-muted); }
+.tap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; margin-bottom: 10px; }
+.tap-grid-btn { min-height: 42px; font-size: 0.95em; }
+
+/* ---- ⓘ term meanings (glossary.js) ---- */
+.term-info {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; padding: 0; margin: 0 0 0 2px; vertical-align: middle;
+    border: none; border-radius: 50%; background: transparent;
+    color: var(--forest-mid); font-size: 14px; line-height: 1; cursor: pointer;
+    font-weight: 400; text-transform: none; letter-spacing: 0;
+}
+.term-info:hover, .term-info[aria-expanded="true"] { color: var(--forest-dark); }
+.term-popover {
+    position: fixed; z-index: 10000; max-width: calc(100vw - 16px); box-sizing: border-box;
+    padding: 9px 11px; border: 1px solid var(--forest-border); border-radius: 8px;
+    background: var(--bg-card); color: var(--text-dark);
+    font-size: 0.86rem; font-weight: 400; line-height: 1.4; text-align: left; text-transform: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.term-popover[hidden] { display: none; }
+.term-popover b { color: var(--forest-dark); }
+
+/* ---- Area acres, Property table, Merge (property.js / merge.js) ---- */
+.area-acres-row { margin: 8px 0 4px; }
+.area-acres-row input { max-width: 140px; }
+.property-table { margin-top: 12px; }
+.property-table .property-total td { font-weight: 700; border-top: 2px solid var(--forest-mid); }
+.property-note { font-size: 0.85em; color: var(--text-muted); margin: 6px 2px 0; }
+.merge-modal { max-width: 460px; width: 100%; position: relative; }
+.merge-choice { border: 1px solid var(--forest-border); border-radius: 8px; padding: 8px 10px; margin: 10px 0; }
+.merge-choice legend { font-weight: 600; font-size: 0.9em; padding: 0 4px; }
+.merge-choice label { display: block; margin: 6px 0; font-size: 0.92em; color: var(--text-dark); }
+
+/* "Enough plots?" panel under the Area / Plot counters (ForestScribe SamplingStats) */
+.sampling-panel { flex-basis: 100%; font-size: 0.78em; color: var(--text-muted); text-align: right; margin-top: -2px; }
+.sampling-summary { background: none; border: none; padding: 2px 0; margin: 0; font: inherit; color: inherit; cursor: pointer; text-align: right; }
+.sampling-summary:disabled { cursor: default; }
+.sampling-summary:disabled .sampling-caret { display: none; }
+.sampling-caret { display: inline-block; margin-left: 2px; transition: transform 0.2s; }
+.sampling-summary.open .sampling-caret { transform: rotate(90deg); }
+.sampling-detail { text-align: left; margin-top: 4px; padding: 6px 8px; border-top: 1px solid var(--forest-border); line-height: 1.6; color: var(--text-dark); }
+.sampling-detail[hidden] { display: none; }
+.sampling-panel .met { color: #28a745; font-weight: 700; }
+.sampling-panel .not-met { color: var(--accent-red); font-weight: 700; }
+.sampling-detail .term-info { vertical-align: baseline; }
+
+/* "edit species" beside the Species heading; Done on the species panel */
+.species-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.btn-link-small { background: none; border: none; padding: 2px 4px; font: inherit; font-size: 0.8em; color: var(--forest-light); text-decoration: underline; cursor: pointer; }
+body.dark-mode .btn-link-small { color: #8fc06a; }
+.species-mgmt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.species-mgmt-head h2 { margin: 0; }
+.species-mgmt-head .btn-success { padding: 6px 16px; }
+
+/* Touch targets: at least 44 × 44 px (ForestScribe --touch: 44px) for the Data-tab controls
+   and the bottom tabs. Padding / min-height only, same look. */
+:root { --touch: 44px; }
+.counter-row .counter-control { height: var(--touch); }
+.counter-row .counter-btn { width: var(--touch); min-height: var(--touch); }
+.chip-toggle { min-height: var(--touch); }
+.tool-btn { width: var(--touch); height: var(--touch); }
+.btn-link-small.edit-species-link { min-height: var(--touch); min-width: var(--touch); padding: 0 6px; margin: -10px -6px -10px 0; }
+.sampling-summary { min-height: var(--touch); padding: 0 0 0 8px; }
+.tap-grid { grid-template-columns: repeat(auto-fill, minmax(var(--touch), 1fr)); }
+.tap-grid-btn { min-height: var(--touch); min-width: var(--touch); }
+.tab-btn { min-height: 52px; min-width: var(--touch); }
+
+/* ✓ Check Data (Tally tab) */
+.check-data-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.check-data-head h3 { margin: 0; }
+.check-data-btn { min-height: var(--touch); }
+.check-data-results { margin-top: 8px; }
+.check-data-results[hidden] { display: none; }
+.check-data-area { font-weight: 700; color: var(--forest-dark); margin: 10px 0 2px; }
+.check-data-summary { font-size: 0.9em; margin: 4px 0 6px; color: var(--text-dark); }
+.check-data-summary .ok { color: #28a745; font-weight: 700; }
+.check-data-summary .warn { color: #b45309; font-weight: 700; }
+.check-data-item { display: flex; gap: 8px; align-items: flex-start; width: 100%; min-height: var(--touch); padding: 8px 4px; margin: 0;
+    border: none; border-bottom: 1px solid var(--forest-border); background: none; font: inherit; font-size: 0.9em;
+    color: var(--text-dark); text-align: left; }
+button.check-data-item { cursor: pointer; }
+button.check-data-item:hover { background: var(--forest-pale); }
+.check-data-item .cd-icon { flex: none; width: 1.2em; }
+.check-data-item .cd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.check-data-item .cd-edit { flex: none; color: var(--forest-light); text-decoration: underline; font-size: 0.9em; }
+body.dark-mode .check-data-area { color: #8fc06a; }
+body.dark-mode .check-data-item .cd-edit { color: #8fc06a; }
+body.dark-mode .check-data-summary .warn { color: #f0a830; }

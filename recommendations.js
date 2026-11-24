@@ -10,8 +10,10 @@
 
     // Plan details are kept once per device; the per-area lists belong to the open project (script.js).
     const DETAILS_KEY = window.TTStore?.K.recDetails || 'tt3.recDetails';
-    const LIBRARY = Array.isArray(window.REC_LIBRARY) ? window.REC_LIBRARY : [];
-    const CATEGORIES = [...new Set(LIBRARY.map(r => r.category))];
+    // The library with this device's Standard Wording (wording.js); the plain library without it.
+    const BASE_LIBRARY = Array.isArray(window.REC_LIBRARY) ? window.REC_LIBRARY : [];
+    const lib = () => (window.TTWording ? window.TTWording.library() : BASE_LIBRARY);
+    const categories = () => (window.TTWording ? window.TTWording.categories() : [...new Set(BASE_LIBRARY.map(r => r.category))]);
     // TimberTally is shared with the Kentucky Division of Forestry, so the wording is always
     // Kentucky / KDF (there is no state or organization choice).
     const KY_COUNTIES = Array.isArray(window.KY_COUNTIES) ? window.KY_COUNTIES : [];
@@ -32,7 +34,7 @@
     };
     let currentArea = null;
     let mode = 'edit';
-    let openCats = new Set(CATEGORIES.slice(0, 1));
+    let openCats = new Set(categories().slice(0, 1));
 
     function load() {
         const d = window.TTStore ? window.TTStore.readJSON(DETAILS_KEY, null) : null;
@@ -130,7 +132,7 @@
     // ============================================================
     // MARKUP -> HTML / PLAIN TEXT
     // ============================================================
-    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const inlineHtml = s => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<u>$1</u>');
     const stripInline = s => s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1');
 
@@ -216,7 +218,7 @@
     // RENDERING
     // ============================================================
     const $ = id => document.getElementById(id);
-    const libItemOf = r => (r.sourceId ? LIBRARY.find(x => x.id === r.sourceId || (x.aliases || []).includes(r.sourceId)) : undefined);
+    const libItemOf = r => (r.sourceId ? lib().find(x => x.id === r.sourceId || (x.aliases || []).includes(r.sourceId)) : undefined);
     const has = item => recs().some(r => r.sourceId === item.id || (item.aliases || []).includes(r.sourceId));
 
     function areaOptions() {
@@ -231,7 +233,7 @@
         if (!sel) return;
         const { list, cur } = areaOptions();
         if (!currentArea || !list.includes(currentArea)) currentArea = cur;
-        sel.innerHTML = list.map(a => `<option value="${a}">Area ${a}${store.areas[a]?.length ? ` (${store.areas[a].length})` : ''}</option>`).join('');
+        sel.innerHTML = list.map(a => `<option value="${esc(a)}">Area ${esc(a)}${store.areas[a]?.length ? ` (${store.areas[a].length})` : ''}</option>`).join('');
         sel.value = currentArea;
         renderDetails();
         renderLibrary();
@@ -261,8 +263,9 @@
 
     function renderLibrary() {
         const box = $('recsLibrary');
-        box.innerHTML = CATEGORIES.map(cat => {
-            const items = LIBRARY.filter(r => r.category === cat);
+        const LIB = lib();
+        box.innerHTML = categories().map(cat => {
+            const items = LIB.filter(r => r.category === cat);
             const open = openCats.has(cat);
             const count = items.filter(has).length;
             return `<div class="rec-category">
@@ -270,7 +273,7 @@
                     ${open ? '&#9662;' : '&#9656;'} ${esc(cat)}${count ? ` <span class="rec-count">(${count})</span>` : ''}
                 </button>
                 ${open ? `<div class="rec-buttons">${items.map(r =>
-                    `<button type="button" class="rec-btn${has(r) ? ' rec-selected' : ''}" data-rec="${r.id}" title="${esc(stripInline(fillPlaceholders(r.text)).slice(0, 400))}">${has(r) ? '&#10003; ' : ''}${esc(r.title)}</button>`).join('')}</div>` : ''}
+                    `<button type="button" class="rec-btn${has(r) ? ' rec-selected' : ''}" data-rec="${esc(r.id)}" title="${esc(stripInline(fillPlaceholders(r.text)).slice(0, 400))}">${has(r) ? '&#10003; ' : ''}${esc(r.title)}</button>`).join('')}</div>` : ''}
             </div>`;
         }).join('');
     }
@@ -295,7 +298,7 @@
         }
         box.innerHTML = list.map((r, i) => {
             const needs = missingInputs(r.text).length > 0;
-            return `<div class="rec-item" data-id="${r.id}">
+            return `<div class="rec-item" data-id="${esc(r.id)}">
                 <div class="rec-item-head">
                     <span class="rec-item-num">${list.length > 1 ? `${i + 1})` : ''}</span>
                     <input type="text" class="rec-title-input" placeholder="Title" value="${esc(r.title)}">
@@ -313,6 +316,7 @@
         const { html } = buildOutput();
         $('recsPreview').innerHTML = html || '<p class="placeholder-msg">No recommendations yet.</p>';
         $('recsCopyBtn').disabled = !html;
+        if ($('recsCopyTextBtn')) $('recsCopyTextBtn').disabled = !html;
         $('recsCopyStatus').textContent = '';
     }
 
@@ -357,7 +361,7 @@
         $('recsInputFields').innerHTML = fields.map((f, i) => `
             <div class="input-group recs-field">
                 <label for="recsIn${i}">${esc(f.label)}</label>
-                <input type="text" id="recsIn${i}" data-key="${f.key}" value="${esc(f.value)}" placeholder="${esc(f.placeholder)}">
+                <input type="text" id="recsIn${i}" data-key="${esc(f.key)}" value="${esc(f.value)}" placeholder="${esc(f.placeholder)}">
             </div>`).join('');
         $('recsInputOk').textContent = okLabel;
         modal.style.display = 'flex';
@@ -402,6 +406,54 @@
         }
     }
 
+    /**
+     * The current Area's finished recommendations as clean plain text for an email: numbered,
+     * bullets as "• " on their own lines, no markup, a blank line between items, titles when
+     * "Include titles" is ticked.
+     */
+    function plainTextOutput() {
+        const NL = String.fromCharCode(10);
+        const includeTitles = document.getElementById('recsIncludeTitles')?.checked;
+        const list = recs().map(r => ({ title: r.title.trim(), text: fillPlaceholders(r.text).trim() })).filter(r => r.text);
+        const toText = (blocks, prefix) => {
+            let out = '';
+            blocks.forEach((b, i) => {
+                const pre = i === 0 && prefix ? prefix : '';
+                let t;
+                if (b.type === 'bullet') t = `${pre}• ${stripInline(b.text)}`;
+                else if (b.type === 'p') t = pre + stripInline(b.text);
+                else t = pre + [b.header, ...b.rows].filter(Boolean).map(r => r.map(c => stripInline(c)).join(' | ')).join(NL);
+                // Bullets in a row stay together; everything else gets a blank line before it.
+                out += i === 0 ? t : (b.type === 'bullet' && blocks[i - 1].type === 'bullet' ? NL : NL + NL) + t;
+            });
+            return out;
+        };
+        return list.map((r, i) => {
+            const num = list.length > 1 ? `${i + 1}) ` : '';
+            const blocks = parseBlocks(r.text);
+            return includeTitles && r.title ? num + r.title + NL + NL + toText(blocks, '') : toText(blocks, num);
+        }).join(NL + NL).replace(/[ \t]+(?=\n)/g, '').trim();
+    }
+    async function copyPlainText() {
+        const text = plainTextOutput();
+        const status = $('recsCopyStatus');
+        if (!text) return;
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error('no clipboard API');
+            await navigator.clipboard.writeText(text);
+            status.textContent = '✓ Copied as plain text — paste into an email';
+        } catch (e) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                const ok = document.execCommand('copy');
+                ta.remove();
+                status.textContent = ok ? '✓ Copied as plain text — paste into an email' : 'Copy failed — select the text and copy manually.';
+            } catch (e2) { status.textContent = 'Copy failed — select the text and copy manually.'; }
+        }
+    }
+
     // ============================================================
     // EVENTS
     // ============================================================
@@ -435,7 +487,7 @@
             }
             const btn = e.target.closest('[data-rec]');
             if (btn) {
-                const item = LIBRARY.find(r => r.id === btn.dataset.rec);
+                const item = lib().find(r => r.id === btn.dataset.rec);
                 if (item) toggleLibrary(item);
             }
         });
@@ -444,6 +496,15 @@
         document.querySelectorAll('.recs-mini-tab').forEach(b => b.addEventListener('click', () => { mode = b.dataset.mode; renderMode(); }));
         $('recsIncludeTitles').addEventListener('change', renderPreview);
         $('recsCopyBtn').addEventListener('click', copyOutput);
+        // "Copy as plain text" (for an email), beside Copy Recommendations.
+        if (!$('recsCopyTextBtn')) {
+            const t = document.createElement('button');
+            t.type = 'button'; t.id = 'recsCopyTextBtn'; t.className = 'control-button btn-info';
+            t.textContent = 'Copy as plain text';
+            t.title = 'Plain text for an email: numbered, bullets as •, no formatting';
+            $('recsCopyBtn').after(t);
+            t.addEventListener('click', copyPlainText);
+        }
         $('recsAddCustomBtn').addEventListener('click', () => {
             recs().push({ id: newId(), title: '', text: '' });
             save();

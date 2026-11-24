@@ -1,0 +1,7 @@
+#!/bin/sh
+# Every push to main is live on GitHub Pages (and on phones at their next update),
+# so run all checks first: lint, unit tests and the browser tests.
+# One-time setup in this clone:   git config core.hooksPath .githooks
+# (Emergency only: git push --no-verify)
+echo "pre-push: running npm run check ..."
+npm run check

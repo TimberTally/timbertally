@@ -1,0 +1,19 @@
+{
+  "name": "timbertally-dev",
+  "private": true,
+  "description": "Development tooling only (lint and tests). The app itself has no build step: GitHub Pages serves the repo root as-is.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "serve": "node scripts/serve.cjs",
+    "lint": "oxlint -c .oxlintrc.json .",
+    "test": "node --test \"tests/**/*.test.cjs\"",
+    "test:e2e": "playwright test -c playwright.config.cjs",
+    "release-check": "node scripts/release-check.cjs",
+    "update-golden": "node scripts/update-golden.cjs",
+    "check": "npm run lint && npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "oxlint": "^1.20.0"
+  }
+}

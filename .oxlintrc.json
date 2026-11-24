@@ -1,0 +1,177 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-undef": "error",
+    "no-unused-vars": [
+      "warn",
+      {
+        "vars": "all",
+        "caughtErrors": "none",
+        "args": "none",
+        "varsIgnorePattern": "^(BA_CONST|CHART_COLORS|Chart|DBH_CLASS_LABELS|DBH_CLASS_MAP|DEFAULT_SPECIES|DOYLE_FC78_VOLUMES|FIXED_PLOT_SIZES|GINGRICH_A_PCT|GINGRICH_B_PCT|GINGRICH_DARK|GINGRICH_H|GINGRICH_LIGHT|GINGRICH_W|INTERNATIONAL_FC78_VOLUMES|JSZip|KY_COUNTIES|KY_NRCS_PHONES|LOG_COUNT_CHOICES|REC_LIBRARY|SCRIBNER_FC78_VOLUMES|SHEET_H|SHEET_W|STAND_CHART_EMPTY|STAND_CHART_KEYS|STAND_CHART_SECTION|TTApp|TTCheckData|TTCsvMatch|TTInfo|TTMenu|TTMerge|TTPlotExport|TTRecs|TTSettings|TTStore|TTTour|TTWording|TT_GLOSSARY|TapGrid|VALID_DOYLE_FC|_GA|_GB|_svgEsc|areaAcresOf|buildGingrichCanvas|buildGraphsSheetCanvas|buildPropertySummaryCanvas|buildSummaryReportCanvas|calculateForestryReport|calculatePlotStats|calculatePropertySummary|calculateStandStockTable|calculateStandStocking|combinedPlotStats|comparePlotKeys|createScrollWheel|cruiseCsvTag|cruiseFileTag|cruiseLabel|csvCell|csvUnguard|distByLabel|fixedPlotFraction|fixedPlotRadiusFt|formatReportForCsv|formatStandStockCsv|generateTallyData|getDbhClass|getTreeVolume|gingrichBaAt|gingrichLevel|gingrichPercent|gingrichPoints|isFixedCruise|logsChoicesFor|maxLogsFor|mergeFallbackProjects|plotKey|plotsNeeded|renderGingrichInto|renderGingrichSvg|renderPropertyTableHtml|renderTallyCharts|splitCsvRecords|standChartConfig|standChartOptions|treeBaPerAcre|treeExpansion|ttEntry|ttGetCurrentArea|ttGetDataAreas|ttGetProjectRecs|ttInstallEvent|ttProject|ttSaveProjectRecs|ttTermBtn)$"
+      }
+    ],
+    "no-unreachable": "error",
+    "no-dupe-keys": "error",
+    "no-dupe-else-if": "error",
+    "no-duplicate-case": "error",
+    "no-self-assign": "error",
+    "no-const-assign": "error",
+    "no-redeclare": [
+      "error",
+      {
+        "builtinGlobals": false
+      }
+    ],
+    "no-empty": "off",
+    "no-useless-escape": "off",
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "no-unused-expressions": "off"
+  },
+  "globals": {
+    "BA_CONST": "readonly",
+    "CHART_COLORS": "readonly",
+    "Chart": "readonly",
+    "DBH_CLASS_LABELS": "readonly",
+    "DBH_CLASS_MAP": "readonly",
+    "DEFAULT_SPECIES": "readonly",
+    "DOYLE_FC78_VOLUMES": "readonly",
+    "FIXED_PLOT_SIZES": "readonly",
+    "GINGRICH_A_PCT": "readonly",
+    "GINGRICH_B_PCT": "readonly",
+    "GINGRICH_DARK": "readonly",
+    "GINGRICH_H": "readonly",
+    "GINGRICH_LIGHT": "readonly",
+    "GINGRICH_W": "readonly",
+    "INTERNATIONAL_FC78_VOLUMES": "readonly",
+    "JSZip": "readonly",
+    "KY_COUNTIES": "readonly",
+    "KY_NRCS_PHONES": "readonly",
+    "LOG_COUNT_CHOICES": "readonly",
+    "REC_LIBRARY": "readonly",
+    "SCRIBNER_FC78_VOLUMES": "readonly",
+    "SHEET_H": "readonly",
+    "SHEET_W": "readonly",
+    "STAND_CHART_EMPTY": "readonly",
+    "STAND_CHART_KEYS": "readonly",
+    "STAND_CHART_SECTION": "readonly",
+    "TTApp": "readonly",
+    "TTCheckData": "readonly",
+    "TTCsvMatch": "readonly",
+    "TTInfo": "readonly",
+    "TTMenu": "readonly",
+    "TTMerge": "readonly",
+    "TTPlotExport": "readonly",
+    "TTRecs": "readonly",
+    "TTSettings": "readonly",
+    "TTStore": "readonly",
+    "TTTour": "readonly",
+    "TTWording": "readonly",
+    "TT_GLOSSARY": "readonly",
+    "TapGrid": "readonly",
+    "VALID_DOYLE_FC": "readonly",
+    "_GA": "readonly",
+    "_GB": "readonly",
+    "_svgEsc": "readonly",
+    "areaAcresOf": "readonly",
+    "buildGingrichCanvas": "readonly",
+    "buildGraphsSheetCanvas": "readonly",
+    "buildPropertySummaryCanvas": "readonly",
+    "buildSummaryReportCanvas": "readonly",
+    "calculateForestryReport": "readonly",
+    "calculatePlotStats": "readonly",
+    "calculatePropertySummary": "readonly",
+    "calculateStandStockTable": "readonly",
+    "calculateStandStocking": "readonly",
+    "combinedPlotStats": "readonly",
+    "comparePlotKeys": "readonly",
+    "createScrollWheel": "readonly",
+    "cruiseCsvTag": "readonly",
+    "cruiseFileTag": "readonly",
+    "cruiseLabel": "readonly",
+    "csvCell": "readonly",
+    "csvUnguard": "readonly",
+    "distByLabel": "readonly",
+    "fixedPlotFraction": "readonly",
+    "fixedPlotRadiusFt": "readonly",
+    "formatReportForCsv": "readonly",
+    "formatStandStockCsv": "readonly",
+    "generateTallyData": "readonly",
+    "getDbhClass": "readonly",
+    "getTreeVolume": "readonly",
+    "gingrichBaAt": "readonly",
+    "gingrichLevel": "readonly",
+    "gingrichPercent": "readonly",
+    "gingrichPoints": "readonly",
+    "isFixedCruise": "readonly",
+    "logsChoicesFor": "readonly",
+    "maxLogsFor": "readonly",
+    "mergeFallbackProjects": "readonly",
+    "plotKey": "readonly",
+    "plotsNeeded": "readonly",
+    "renderGingrichInto": "readonly",
+    "renderGingrichSvg": "readonly",
+    "renderPropertyTableHtml": "readonly",
+    "renderTallyCharts": "readonly",
+    "splitCsvRecords": "readonly",
+    "standChartConfig": "readonly",
+    "standChartOptions": "readonly",
+    "treeBaPerAcre": "readonly",
+    "treeExpansion": "readonly",
+    "ttEntry": "readonly",
+    "ttGetCurrentArea": "readonly",
+    "ttGetDataAreas": "readonly",
+    "ttGetProjectRecs": "readonly",
+    "ttInstallEvent": "readonly",
+    "ttProject": "readonly",
+    "ttSaveProjectRecs": "readonly",
+    "ttTermBtn": "readonly"
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    "lib/**",
+    "video/**",
+    "test-results/**",
+    "playwright-report/**"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "tests/**",
+        "scripts/**",
+        "*.cjs"
+      ],
+      "env": {
+        "node": true,
+        "browser": false
+      }
+    },
+    {
+      "files": [
+        "e2e/**",
+        "playwright.config.*",
+        "build-quick-start.cjs",
+        "quick-start-shots.cjs"
+      ],
+      "env": {
+        "node": true,
+        "browser": true
+      }
+    },
+    {
+      "files": [
+        "service-worker.js"
+      ],
+      "env": {
+        "serviceworker": true
+      }
+    }
+  ]
+}

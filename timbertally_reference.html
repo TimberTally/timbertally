@@ -230,7 +230,7 @@
     <span class="formula">CV (%) = (Std Dev ÷ Mean) × 100</span>
 
     <h2>7. Plots Needed Estimate</h2>
-    <p>The "Plots Needed" counter uses the current Area's CV to estimate how many total plots would be required to reach ±10%, ±20% or ±30% precision (t = 2, ~95% confidence); a ✓ means the Area already has enough:</p>
+    <p>The "Enough plots?" panel on the Data tab uses the current Area's CV to estimate how many total plots would be required to reach ±10%, ±15% or ±20% precision (t = 2, ~95% confidence); a ✓ means the Area already has enough:</p>
     <span class="formula">n = ⌈(t × CV ÷ Desired Error%)²⌉</span>
     <p>Requires at least 2 plots with data in the current Area. A high CV means more plots are needed for the same precision.</p>
     
@@ -343,7 +343,7 @@
     <p>For each Area: counts plots (empty plots included), and for every tally tree adds its TPA (<code>BAF ÷ BA</code>) and TPA × DBH² to the Total and to Cut or Leave. Dividing by the plot count gives TPA/Acre and ΣD²/Acre; then <code>BA/Acre = BA_CONST × ΣD²/Acre</code>, <code>QMD = √(ΣD²/Acre ÷ TPA/Acre)</code>, and stocking % from <code>gingrichPercent(TPA, QMD)</code> (−0.00507·N + 0.01698·N·D + 0.00317·N·D²). Level: ≥100% Overstocked, ≥60% Fully stocked, else Understocked. The chart's A- and B-lines are the 100% and 60% curves solved for BA at each TPA (<code>gingrichBaAt</code>).</p>
 
     <h2>calculateAndDisplayNeededPlots (inline in script.js)</h2>
-    <span class="formula">n = ⌈(2 × CV ÷ E)²⌉ where E = 10, 20 or 30 (±10%, ±20%, ±30%)</span>
+    <span class="formula">n = ⌈(2 × CV ÷ E)²⌉ where E = 10, 15 or 20 (±10%, ±15%, ±20%)</span>
     <p>Filters data to current Area only. Requires numPlots ≥ 2 and CV &gt; 0.</p>
 
     <h2>generateAndDownloadCsv (script.js) — Save ZIP</h2>

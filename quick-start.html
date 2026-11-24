@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>TimberTally Quick Start</title>
+<!-- Source of TimberTally-Quick-Start.pdf. Rebuild the PDF with: node build-quick-start.cjs -->
+<style>
+  @page { size: letter; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --green: #2d5016; --mid: #3d6b20; --pale: #e8f0e0; --border: #b8d4a0; --ink: #1e2d0f; --muted: #5d6a4c; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: var(--ink); font-size: 9.6pt; line-height: 1.28; }
+  .page { width: 8.5in; height: 11in; padding: 0.4in 0.55in 0.5in; position: relative; overflow: hidden; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  header { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 3px solid var(--green); margin-bottom: 12px; }
+  header img { width: 44px; height: 44px; border-radius: 10px; }
+  header h1 { font-size: 23pt; line-height: 1; color: var(--green); letter-spacing: -0.3px; }
+  header .sub { font-size: 11pt; color: var(--muted); margin-top: 3px; }
+  header .side { margin-left: auto; text-align: right; font-size: 9pt; color: var(--muted); }
+  header .side b { color: var(--green); font-size: 11pt; }
+  .cols { display: grid; grid-template-columns: 1fr 2.1in; gap: 18px; }
+  .step { display: grid; grid-template-columns: 30px 1fr; gap: 10px; margin-bottom: 7px; }
+  .num { width: 28px; height: 28px; border-radius: 50%; background: var(--green); color: #fff; font-weight: 700; font-size: 13pt; display: flex; align-items: center; justify-content: center; }
+  .step h2 { font-size: 12.5pt; color: var(--green); margin: 2px 0 3px; }
+  ul { padding-left: 15px; }
+  li { margin-bottom: 1.5px; }
+  b { font-weight: 650; }
+  .key { display: inline-block; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--pale); font-size: 9.4pt; font-weight: 600; color: var(--green); white-space: nowrap; }
+  .box { border: 1.5px solid var(--border); background: #f6faf2; border-radius: 8px; padding: 9px 12px; margin-top: 4px; margin-bottom: 10px; }
+  .box h3 { font-size: 11pt; color: var(--green); margin-bottom: 4px; }
+  .page + .page .box { margin-bottom: 6px; padding: 7px 12px; }
+  .page + .page td { padding: 2px 6px; }
+  .warn { border-color: #e2c26b; background: #fffaeb; }
+  .warn h3 { color: #8a6412; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.6pt; }
+  td { padding: 3px 6px; border-bottom: 1px solid #dfe9db; vertical-align: top; }
+  td:first-child { font-weight: 650; color: var(--green); white-space: nowrap; width: 1%; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  figure.shot { float: right; clear: right; margin: 2px 0 6px 10px; text-align: center; }
+  figure.shot img { display: block; width: 100%; border: 1px solid #a9c290; border-radius: 9px; box-shadow: 0 1px 4px rgba(0,0,0,0.18); }
+  figure.shot figcaption { font-size: 7.8pt; color: var(--muted); margin-top: 2px; line-height: 1.2; }
+  .clear { clear: both; }
+  footer { position: absolute; left: 0.55in; right: 0.55in; bottom: 0.3in; font-size: 8.4pt; color: var(--muted); display: flex; justify-content: space-between; border-top: 1px solid #dfe9db; padding-top: 5px; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────── Page 1: set up and enter trees ───────────────────────── -->
+<section class="page">
+  <header>
+    <img src="icon.png" alt="" />
+    <div>
+      <h1>TimberTally Quick Start</h1>
+      <div class="sub">Tally timber on your phone with no signal, then save one ZIP of reports.</div>
+    </div>
+    <div class="side"><b>Page 1</b><br />Set up &amp; enter trees</div>
+  </header>
+
+  <div class="cols">
+    <div>
+      <div class="step"><div class="num">1</div><div>
+        <h2>Install it (once)</h2>
+        <ul>
+          <li>Open the TimberTally link on your phone, then <span class="key">☰</span> → <span class="key">Install App</span>.</li>
+          <li><b>iPhone / iPad:</b> Safari → <span class="key">Share</span> → <span class="key">Add to Home Screen</span>.</li>
+          <li><b>Android:</b> Chrome → <span class="key">⋮</span> → <span class="key">Install app</span> (Samsung Internet: <span class="key">☰</span> → Add page to → Home screen).</li>
+          <li><b>Computer:</b> Chrome or Edge → the install icon at the right end of the address bar.</li>
+          <li>From then on it opens from its own tree icon and <b>works with no signal</b>. When an update is ready, a banner offers <span class="key">Update Now</span>.</li>
+        </ul>
+      </div></div>
+
+      <div class="step"><div class="num">2</div><div>
+        <h2>Set up before you cruise</h2>
+        <figure class="shot" style="width:1.55in"><img src="quick-start/settings.jpg" alt="Settings" /><figcaption>Settings</figcaption></figure>
+        <ul>
+          <li><span class="key">☰</span> → <span class="key">Settings</span>:</li>
+          <li><b>Cruise Method:</b> Prism (<b>BAF</b> 5–40) or <b>Fixed plot</b> (1/4 to 1/50 acre).</li>
+          <li><b>Log Rule:</b> Doyle, Scribner or International ¼″. <b>Form Class</b> (Doyle only): 70–86.</li>
+          <li><b>Collection:</b> <b>Scroll Wheel</b> (spin DBH and logs, then Submit) or <b>Tap Grid</b> (tap a DBH, then logs: saved).</li>
+          <li><b>Dark Mode:</b> Off, On or System. Settings save as you change them; tap <span class="key">Done</span>.</li>
+          <li>One project per property: <span class="key">Projects</span> → <span class="key">+ New Project</span>, then type its name.</li>
+        </ul>
+      </div></div>
+
+      <div class="step"><div class="num">3</div><div>
+        <h2>Enter trees on the Data tab</h2>
+        <figure class="shot" style="width:1.3in"><img src="quick-start/data-top.jpg" alt="Area, Plot &amp; species" /><figcaption>Area, Plot &amp; species</figcaption></figure>
+        <figure class="shot" style="width:1.3in"><img src="quick-start/data-wheels.jpg" alt="DBH, Logs &amp; Submit" /><figcaption>DBH, Logs &amp; Submit</figcaption></figure>
+        <ul>
+          <li>Set <b>Area</b> and <b>Plot #</b> with <b>−</b> / <b>+</b> (or swipe across them).</li>
+          <li>Tap a <b>species</b> (your 8 most-used are buttons; the rest are in the list), spin <b>DBH</b> and <b>Logs</b>, tap <b>Cut</b> or <b>UGS</b> if it applies, then <span class="key">Submit Entry</span>.</li>
+          <li><b>No trees in the plot?</b> Tap <span class="key">Record empty plot</span> under Submit so it still counts.</li>
+          <li><b>GPS:</b> once location is allowed, each plot's 3rd tree is located; or tap <span class="key">GPS</span> for the next tree.</li>
+          <li><b>Borderline tree?</b> Tap the limiting-distance line under the wheels and enter the measured distance: IN or OUT.</li>
+          <li>Made a mistake? Tap the tree in <b>Recent Entries</b> to edit or delete it.</li>
+          <li><span class="key">Plots</span> lists every plot (go to, move, renumber); <span class="key">Area Notes</span> holds notes, acres and regeneration.</li>
+        </ul>
+      </div></div>
+
+      <div class="box warn">
+        <h3>⚠ Your data lives only on this device</h3>
+        <ul>
+          <li>Every tree is saved the moment you submit it, but only on this phone. Back up often: <span class="key">Projects</span> → <span class="key">Save Backup</span> (to Files, email or a cloud drive). The app reminds you after 7 days.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div>
+      <div class="box">
+        <h3>The bottom tabs</h3>
+        <table>
+          <tr><td>Data</td><td>enter trees; Submit sits just above the tabs</td></tr>
+          <tr><td>Projects</td><td>switch, back up, restore, merge, import CSV, plot locations</td></tr>
+          <tr><td>Tally</td><td>per-acre results, Check Data, stocking chart, charts</td></tr>
+          <tr><td>Recs</td><td>recommendations for each Area</td></tr>
+        </table>
+      </div>
+      <div class="box">
+        <h3>At the top</h3>
+        <table>
+          <tr><td>💾 Save ZIP</td><td>everything for the project in one file</td></tr>
+          <tr><td>?</td><td>Help &amp; Tours</td></tr>
+          <tr><td>☰</td><td>Settings, Help &amp; Tours, Quick Start sheet, Standard Wording, Install App, Check for Updates, Info / Contact</td></tr>
+        </table>
+      </div>
+      <div class="box">
+        <h3>Just looking?</h3>
+        <p><span class="key">Projects</span> → <b>Try the Sample Project</b> adds a made-up property with two Areas. Your own projects are not changed.</p>
+      </div>
+      <div class="box">
+        <h3>What's this word?</h3>
+        <p>Tap the small <b>ⓘ</b> beside a term (DBH, BAF, BA, TPA, QMD, CV, stocking…) for a one-line meaning.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer><span>Questions? <b>timbertallyapp@gmail.com</b> · ? → Report a Problem</span><span>Tap <b>?</b> at the top of the app anytime for a tour.</span></footer>
+</section>
+
+<!-- ───────────────────────── Page 2: check, write up, save ───────────────────────── -->
+<section class="page">
+  <header>
+    <img src="icon.png" alt="" />
+    <div>
+      <h1>Check, Write Up &amp; Save</h1>
+      <div class="sub">Before you leave the woods, and back at the desk.</div>
+    </div>
+    <div class="side"><b>Page 2</b><br />Results &amp; backup</div>
+  </header>
+
+  <div class="grid2">
+    <div>
+      <div class="step"><div class="num">4</div><div>
+        <h2>Check your work</h2>
+        <figure class="shot" style="width:1.75in"><img src="quick-start/enough-plots.jpg" alt="Enough plots? (tap to open)" /><figcaption>Enough plots? (tap to open)</figcaption></figure>
+        <ul>
+          <li><b>Enough plots?</b> Under Area / Plot on the Data tab: plots needed for ±10, 15 and 20% sampling error (✓ when you have them). Tap it for the sampling error, mean volume, confidence interval and CV.</li>
+          <li><span class="key">Tally</span>: trees, basal area and board feet per acre, QMD, the Gingrich stocking chart (with the stand left after a cut) and stand charts. Pick one Area or all.</li>
+          <li><span class="key">✓ Check Data</span> (Tally tab) finds skipped plots, likely double entries, log counts beyond the volume table, big trees and missing species or DBH. Tap an issue to fix the tree.</li>
+        </ul>
+      </div></div>
+
+      <div class="step"><div class="num">5</div><div>
+        <h2>Write the recommendations</h2>
+        <figure class="shot" style="width:1.55in"><img src="quick-start/recs.jpg" alt="Tap to add (Area A)" /><figcaption>Tap to add (Area A)</figcaption></figure>
+        <ul>
+          <li><span class="key">Recs</span>: pick the <b>Area</b> and the <b>County</b> (its NRCS office phone fills in).</li>
+          <li>Open a library category and tap a recommendation to add it. Some ask for a detail, such as which invasive species.</li>
+          <li><b>Edit</b> the wording for this Area, reorder or remove; add your own.</li>
+          <li><b>Preview</b> → <span class="key">Copy Recommendations</span> (formatting survives a paste into Word) or <span class="key">Copy as plain text</span> for an email.</li>
+          <li><span class="key">☰</span> → <span class="key">Standard Wording</span>: rewrite the library in your own words or add your own library recommendations. Used from then on; Areas that already have one keep their text.</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div>
+      <div class="step"><div class="num">6</div><div>
+        <h2>Save &amp; back up</h2>
+        <ul>
+          <li><span class="key">💾 Save ZIP</span> (top right): for each Area a CSV, Stand &amp; Stock table, Summary Report and Graphs page; a Property Summary with 2+ Areas; the stocking chart and Area notes.</li>
+          <li><span class="key">Projects</span> → <span class="key">Save Backup</span>: one <b>.json</b> with every project, species list, plan details and Standard Wording. <span class="key">Restore Backup</span> adds them on another device; nothing there is replaced.</li>
+          <li><span class="key">⇄ Merge Another Device</span>: combine a second cruiser's backup or CSV into this project (new plots, or the same plots tallied together).</li>
+          <li><span class="key">📍 Export Plot Locations</span>: KML (Google Earth), GPX (GPS units, Avenza) or GeoJSON (GIS).</li>
+          <li><b>Safety copies</b> are kept for 7 days before anything is deleted or moved (Projects tab).</li>
+        </ul>
+      </div></div>
+
+      <div class="step"><div class="num">7</div><div>
+        <h2>Get help</h2>
+        <ul>
+          <li><span class="key">?</span> at the top: <b>Help &amp; Tours</b>, a tour of the tab that is open, and tours of Data entry, Projects &amp; backup, Tally &amp; Check Data, Recs and Settings.</li>
+          <li><b>ⓘ</b> beside a term explains it in a line.</li>
+          <li><b>Report a Problem</b> (in Help) opens an email with the app version; you add what happened. No project data is sent.</li>
+        </ul>
+      </div></div>
+        <div style="display:flex;gap:8px;margin:4px 0 0 40px"><figure class="shot" style="float:none;margin:0;flex:1"><img src="quick-start/tally-chart.jpg" alt="Gingrich stocking chart" /><figcaption>Gingrich stocking chart</figcaption></figure>
+        <figure class="shot" style="float:none;margin:0;flex:1"><img src="quick-start/check-data.jpg" alt="Check Data" /><figcaption>Check Data</figcaption></figure>
+        </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Good to know</h3>
+    <table>
+      <tr><td>Other programs' data</td><td><span class="key">Projects</span> → <b>Import CSV</b>. Another program's CSV opens <b>Match Columns</b>, which sorts out headings, log units and species codes.</td></tr>
+      <tr><td>Saving</td><td>Every change is saved at once. The header shows the time of the last save; a red bar appears if a save ever fails.</td></tr>
+      <tr><td>Tree ID Key</td><td><span class="key">☰</span> → <span class="key">Settings</span> → <span class="key">Tree ID Key</span>: leaf key, and a twig key for winter.</td></tr>
+      <tr><td>Updates</td><td><span class="key">☰</span> → <span class="key">Check for Updates</span>. An update never wipes your projects.</td></tr>
+    </table>
+  </div>
+
+  <div class="box">
+    <h3>Contact</h3>
+    <p>Questions, problems or ideas: <b>timbertallyapp@gmail.com</b> (also under <span class="key">☰</span> → <span class="key">Info / Contact</span>).</p>
+  </div>
+
+  <footer><span>Questions? <b>timbertallyapp@gmail.com</b> · ? → Report a Problem</span><span>Practice first with <b>Projects → Try the Sample Project</b>.</span></footer>
+</section>
+
+</body>
+</html>

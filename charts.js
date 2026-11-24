@@ -201,7 +201,7 @@ function buildGraphsSheetCanvas(report, areaLetter, projectName, logRule, formCl
     g.font = font(16); g.fillText('Stand Graphs', M, 56);
     const rule = logRule === 'Doyle' ? `Doyle FC${formClass}` : logRule === 'International' ? 'International ¼"' : logRule;
     g.textAlign = 'right';
-    g.font = font(17, true); g.fillText(`BAF ${baf}  ·  ${rule}`, LW - M, 28);
+    g.font = font(17, true); g.fillText(`${cruiseLabel(baf)}  ·  ${rule}`, LW - M, 28);
     g.font = font(16); g.fillText(`${plots} plot${plots === 1 ? '' : 's'}  ·  ${new Date().toLocaleDateString()}`, LW - M, 56);
 
     // 2 x 2 grid of charts, each under a green section bar
@@ -493,7 +493,7 @@ async function buildSummaryReportCanvas(report, plotStats, areaLetter, projectNa
     ctx.textAlign = 'right';
     const rule = logRule === 'Doyle' ? `Doyle FC${formClass}` : logRule === 'International' ? 'International ¼"' : logRule;
     ctx.font = font(17, true);
-    ctx.fillText(`BAF ${baf}  ·  ${rule}`, LW - M, 28);
+    ctx.fillText(`${cruiseLabel(baf)}  ·  ${rule}`, LW - M, 28);
     ctx.font = font(16);
     ctx.fillText(`${sum.numberOfPlots} plot${sum.numberOfPlots === 1 ? '' : 's'}  ·  ${new Date().toLocaleDateString()}`, LW - M, 56);
 
@@ -575,11 +575,11 @@ async function buildSummaryReportCanvas(report, plotStats, areaLetter, projectNa
         const rows = [['Plots', String(n)], ['Mean volume', `${f0(mean)} BF/ac`]];
         if (n > 1 && mean > 0) {
             const se = plotStats.stdDevV / Math.sqrt(n);
-            const need = e => Math.ceil(Math.pow(2 * plotStats.cvV / e, 2));
+            const need = e => plotsNeeded(plotStats.cvV, e);
             const mark = e => (n >= need(e) ? '✓ met' : `${need(e)} plots`);
             rows.push(['Std deviation', `${f0(plotStats.stdDevV)} BF/ac`], ['CV', fP(plotStats.cvV)],
                 ['Sampling error (95%)', `±${f1(2 * se / mean * 100)}%  (±${f0(2 * se)} BF/ac)`],
-                ['Plots needed ±10% / ±20%', `${mark(10)}  /  ${mark(20)}`]);
+                ['Plots needed ±10 / 15 / 20%', `${mark(10)}  /  ${mark(15)}  /  ${mark(20)}`]);
         } else rows.push(['Sampling error', 'needs 2+ plots']);
         sections.stats = { title: 'Sampling Statistics (volume per plot)', head: ['Statistic', 'Value'], w: [1.5, 1.6], rows, noHead: true };
     }

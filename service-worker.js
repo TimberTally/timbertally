@@ -5,7 +5,7 @@
 // Caches are named with this prefix so cleanup never touches caches from other
 // TimberTally versions hosted on the same github.io origin.
 const CACHE_PREFIX = 'timber-tally3-cache-';
-const CACHE_NAME = CACHE_PREFIX + 'v13'; // <--- CHANGE THIS with each new deployment!
+const CACHE_NAME = CACHE_PREFIX + 'v19'; // <--- CHANGE THIS with each new deployment!
 
 // List of files that make up the "app shell" - essential for offline loading.
 const urlsToCache = [
@@ -20,9 +20,30 @@ const urlsToCache = [
   './lib/jszip.min.js',
   './storage.js',
   './scroll-wheel.js',
+  './tap-grid.js',
+  './glossary.js',
+  './property.js',
+  './merge.js',
   './kentucky-counties.js',
   './recommendations-data.js',
   './recommendations.js',
+  './twig-key.js',
+  './csv-match.js',
+  './plot-export.js',
+  './check-data.js',
+  './tour.js',
+  './info.js',
+  './wording.js',
+  './menu.js',
+  './quick-start.html',
+  './TimberTally-Quick-Start.pdf',
+  './quick-start/data-top.jpg',
+  './quick-start/data-wheels.jpg',
+  './quick-start/settings.jpg',
+  './quick-start/enough-plots.jpg',
+  './quick-start/tally-chart.jpg',
+  './quick-start/check-data.jpg',
+  './quick-start/recs.jpg',
   './manifest.json',
   './icon.png',
   './icon-192.png',
@@ -50,8 +71,10 @@ self.addEventListener('install', event => {
         // The UI prompt in script.js allows the user to control when the update is applied.
       })
       .catch(error => {
-        // If any file fails to cache, the installation fails.
+        // If any file fails to cache, the installation must fail: re-throw so this version is
+        // discarded and the previous (complete) cache keeps the app working offline.
         console.error('[Service Worker] New version caching failed:', error);
+        throw error;
       })
   );
 });
@@ -117,23 +140,8 @@ self.addEventListener('fetch', event => {
                 // console.log('[Service Worker] Not in cache, fetching from network:', event.request.url);
                 return fetch(event.request).then(
                     networkResponse => {
-                        // Optional: If the network fetch is successful, you could cache the response here
-                        // dynamically. This is useful for assets not in the initial urlsToCache.
-                        // Be careful what you cache here to avoid filling up storage unnecessarily.
-                        // Example (use with caution):
-                        /*
-                        return caches.open(CACHE_NAME).then(cache => {
-                            // Only cache successful GET requests and clone the response
-                            // because response streams can only be read once.
-                            if (networkResponse.ok) {
-                                cache.put(event.request, networkResponse.clone());
-                            }
-                            return networkResponse;
-                        });
-                        */
-                       // For now, just return the network response without dynamic caching.
-                       // console.log('[Service Worker] Fetched from network:', event.request.url);
-                       return networkResponse;
+                        // Not cached dynamically: only the files in urlsToCache are kept offline.
+                        return networkResponse;
                     }
                 ).catch(error => {
                     // 4. Network fetch failed (e.g., user is offline and resource isn't cached).

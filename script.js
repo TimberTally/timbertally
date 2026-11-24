@@ -1,4 +1,4 @@
-// --- START OF script.js (TimberTally v7) ---
+// --- START OF script.js (TimberTally 3) ---
 
 // ============================================================
 // SERVICE WORKER REGISTRATION & UPDATE HANDLING
@@ -20,6 +20,7 @@ if ('serviceWorker' in navigator) {
         try {
             navigator.serviceWorker.register('./service-worker.js')
                 .then(registration => {
+                    if (!registration) return;   // some browsers / test setups resolve with nothing
                     if (registration.waiting) { newWorker = registration.waiting; showUpdateBar(); }
                     registration.addEventListener('updatefound', () => {
                         const installingWorker = registration.installing;
@@ -37,9 +38,14 @@ if ('serviceWorker' in navigator) {
                 })
                 .catch(err => console.error('SW registration failed:', err));
 
+            // Reload when an update takes over, but not on the very first install (no worker was
+            // controlling the page yet: clients.claim() fires controllerchange then too).
             let refreshing = false;
+            const hadController = !!navigator.serviceWorker.controller;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!refreshing) { window.location.reload(); refreshing = true; }
+                if (!hadController || refreshing) return;
+                refreshing = true;
+                window.location.reload();
             });
         } catch (e) { console.error('SW setup error:', e); }
 
@@ -75,7 +81,9 @@ if (typeof Chart !== 'undefined') {
 // ============================================================
 // MAIN APPLICATION LOGIC
 // ============================================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Saved projects load from IndexedDB first (storage.js); nothing below runs until they are in.
+    try { await window.TTStore?.ready; } catch (e) { console.error('Storage startup failed:', e); }
 
     // --- DOM References ---
     const dbhSelect           = document.getElementById('dbhSelect');
@@ -112,7 +120,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const areaIncrementBtn    = document.getElementById('areaIncrementBtn');
     const areaLetterDisplay   = document.getElementById('areaLetterDisplay');
     const settingsSection     = document.getElementById('settingsSection');
-    const toggleSettingsBtn   = document.getElementById('toggleSettingsBtn');
     const bafSelect           = document.getElementById('bafSelect');
     const logRuleSelect       = document.getElementById('logRuleSelect');
     const formClassSelect     = document.getElementById('formClassSelect');
@@ -128,7 +135,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const removeSpeciesBtn    = document.getElementById('removeSpeciesBtn');
     const speciesMgmtFeedback = document.getElementById('speciesMgmtFeedback');
     const projectNameInput    = document.getElementById('projectNameInput');
-    const saveProjectBtn      = document.getElementById('saveProjectBtn');
     const loadProjectSelect   = document.getElementById('loadProjectSelect');
     const loadProjectBtn      = document.getElementById('loadProjectBtn');
     const deleteProjectBtn    = document.getElementById('deleteProjectBtn');
@@ -160,8 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const SETTINGS_STORAGE_KEY = Store.K.settings;
 
     // --- Constants ---
-    const PRIVACY_POLICY_URL = 'https://timbertally.github.io/TimberTally/privacy.html';
-    const README_URL         = 'https://github.com/TimberTally/TimberTally/blob/main/README.md';
+    /** The full guide (the README on GitHub; ./README.md is not cached for offline use). */
+    const README_URL         = 'https://github.com/timbertally/timbertally#readme';
     const MIN_PLOT_NUMBER    = 1;
     const MAX_PLOT_NUMBER    = 999;
     const areaLetters        = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
@@ -174,13 +180,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPlotNumber   = 1;
     let currentAreaIndex    = 0;
     let currentBaf          = 10;
+    /** Cruise method: 'baf' (prism) or 'fixed' (fixed-radius plots of currentPlotAcres). */
+    let currentCruiseMethod = 'baf';
+    let currentPlotAcres    = 0.1;
+    /** Data tab collection mode: 'wheel' (scroll wheels) or 'grid' (tap grid, tap-grid.js). */
+    let currentEntryMode    = 'wheel';
+    /** What the calculations take: the BAF number, or { method: 'fixed', plotAcres }. */
+    const cruiseSpec = () => (currentCruiseMethod === 'fixed' ? { method: 'fixed', plotAcres: currentPlotAcres } : currentBaf);
     let currentLogRule      = 'Doyle';
     let currentFormClass    = 78;
     let currentDarkMode     = 'off';
     let deferredInstallPrompt = null;   // holds the beforeinstallprompt event
     let currentSpeciesList  = [];
-    let autosaveTimer       = null;
-    let autosaveInterval    = null;
 
     // Feedback timeout handles
     let feedbackTimeout = null, settingsFeedbackTimeout = null;
@@ -193,6 +204,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // UTILITY FUNCTIONS
     // ============================================================
+    /** Escapes text for innerHTML / attribute values (every user or imported string goes through this). */
+    const escHtml = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     function showFeedbackMessage(element, message, isError, duration, timeoutHandle) {
         if (!element) return timeoutHandle;
         if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -222,16 +235,46 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // AUTOSAVE / SESSION
     // ============================================================
-    /** Saves the open project (called after every change). Returns false if the save failed. */
-    function saveSessionData() {
+    /**
+     * Saves the open project (called after every change). Returns false if the save failed.
+     * `opts` goes to Store.saveProject: the screen-off / app-switch save passes
+     * { touch: false, ifChanged: true }, so it neither marks the project changed (backup
+     * reminder, project order) nor tells other windows anything when nothing changed.
+     */
+    function saveSessionData(opts) {
         if (!currentProject) return false;
         currentProject.data = collectedData;
         currentProject.plot = currentPlotNumber;
         currentProject.areaIdx = currentAreaIndex;
-        const ok = Store.saveProject(currentProject);
+        const ok = Store.saveProject(currentProject, opts);
         renderProjectMeta();
         return ok;
     }
+
+    /** Another window (installed app + a browser tab) saved the open project: show its version. */
+    let reloadingFromRemote = false;
+    Store.onRemoteChange(({ id, deleted }) => {
+        if (!currentProject || reloadingFromRemote) return;
+        if (id !== currentProject.id || deleted) { renderProjectsPanel(); return; }
+        reloadingFromRemote = true;
+        try {
+            flushNotes();
+            const p = Store.getProject(id);
+            if (!p) return;
+            // This window keeps its own place (Area and plot); trees, notes and recs come from storage.
+            p.plot = currentPlotNumber; p.areaIdx = currentAreaIndex;
+            currentProject = p;
+            collectedData = p.data;
+            collectedData.forEach((e, i) => { if (!e.id) e.id = Date.now() + i; });
+            renderEntries();
+            updatePlotDisplay(); updateAreaDisplay();
+            renderProjectsPanel();
+            window.TTRecs?.render();
+            renderTallyTab();
+            showFeedback('Updated from another window', false, 3000);
+            document.dispatchEvent(new CustomEvent('tt:entries-changed'));
+        } finally { reloadingFromRemote = false; }
+    });
 
     /** Header status: the time of the last good save, or a visible error. */
     function renderSaveState(st) {
@@ -295,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (loadProjectSelect) {
             const list = Store.listProjects().filter(m => m.id !== currentProject?.id);
             loadProjectSelect.innerHTML = list.length
-                ? list.map(m => `<option value="${m.id}">${escHtml(m.name)} — ${plural(m.treeCount || 0, 'tree')}</option>`).join('')
+                ? list.map(m => `<option value="${escHtml(m.id)}">${escHtml(m.name)} — ${plural(m.treeCount || 0, 'tree')}</option>`).join('')
                 : '<option value="">No other projects</option>';
             loadProjectSelect.disabled = !list.length;
             if (loadProjectBtn) loadProjectBtn.disabled = !list.length;
@@ -312,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         box.innerHTML = list.length ? list.map(s => `
             <div class="snapshot-row">
                 <div class="snapshot-info"><b>${escHtml(s.name)}</b><span>${escHtml(s.reason)} · ${fmtDate(s.createdAt)} · ${plural(s.treeCount || 0, 'tree')}</span></div>
-                <button type="button" class="control-button btn-info" data-restore-snap="${s.id}">Restore</button>
+                <button type="button" class="control-button btn-info" data-restore-snap="${escHtml(s.id)}">Restore</button>
             </div>`).join('') : '<p class="placeholder-msg" style="padding:6px;">No safety copies in the last 7 days.</p>';
     }
 
@@ -327,10 +370,13 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBackupReminder();
     }
 
-    /** Takes a safety copy of the open project before a destructive action. False = the user cancelled. */
-    function safetyCopy(reason) {
+    /**
+     * Takes a safety copy of the open project before a destructive action and waits until it is
+     * really stored. Resolves false (do not go on) when it failed and the user does not continue.
+     */
+    async function safetyCopy(reason) {
         saveSessionData();
-        if (Store.snapshot(currentProject, reason)) { renderSnapshots(); return true; }
+        if (await Store.snapshot(currentProject, reason)) { renderSnapshots(); return true; }
         return confirm('A safety copy could not be kept (device storage is full). Continue anyway?');
     }
 
@@ -361,11 +407,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showProjectFeedback(`Saved a copy: "${copy.name}". You are still in "${currentProject.name}".`);
     }
 
-    function handleDeleteProject() {
+    async function handleDeleteProject() {
         if (!currentProject) return;
         const n = collectedData.filter(e => !e.emptyPlot).length;
         if (!confirm(`Delete project "${currentProject.name}" (${plural(n, 'tree')})?\n\nA safety copy is kept for 7 days on this tab.`)) return;
-        if (!safetyCopy('Project deleted')) return;
+        if (!(await safetyCopy('Project deleted'))) return;
         const gone = currentProject.name;
         Store.deleteProject(currentProject.id);
         const next = Store.listProjects()[0];
@@ -457,8 +503,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveSettings() {
         Store.writeJSON(SETTINGS_STORAGE_KEY, {
             baf: currentBaf, logRule: currentLogRule,
-            formClass: currentFormClass, darkMode: currentDarkMode
+            formClass: currentFormClass, darkMode: currentDarkMode,
+            cruiseMethod: currentCruiseMethod, plotAcres: currentPlotAcres, entryMode: currentEntryMode
         });
+        window.dispatchEvent(new CustomEvent('tt-settings-changed'));
     }
 
     function loadSettings() {
@@ -476,23 +524,41 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (logRuleSelect) logRuleSelect.value = currentLogRule;
                     if (formClassSelect) formClassSelect.value = String(currentFormClass);
                     if (darkModeSelect) darkModeSelect.value = currentDarkMode;
+                    // Older saved settings have no cruise method: they stay on the prism.
+                    currentCruiseMethod = s.cruiseMethod === 'fixed' ? 'fixed' : 'baf';
+                    currentPlotAcres = FIXED_PLOT_SIZES.some(p => p.acres === Number(s.plotAcres)) ? Number(s.plotAcres) : 0.1;
+                    currentEntryMode = s.entryMode === 'grid' ? 'grid' : 'wheel';
+                    syncCruiseControls();
                 } else applyDefaultSettings();
             } else applyDefaultSettings();
         } catch (e) { applyDefaultSettings(); }
         applyDarkMode();
         if (settingsSection) settingsSection.hidden = true;
-        if (toggleSettingsBtn) toggleSettingsBtn.setAttribute('aria-expanded', 'false');
         updateSaveBtnLabel();
     }
 
     function applyDefaultSettings() {
         currentBaf = 10; currentLogRule = 'Doyle'; currentFormClass = 78;
         currentDarkMode = 'off';
+        currentCruiseMethod = 'baf'; currentPlotAcres = 0.1; currentEntryMode = 'wheel';
+        syncCruiseControls();
         if (bafSelect) bafSelect.value = '10';
         if (logRuleSelect) logRuleSelect.value = 'Doyle';
         if (formClassSelect) formClassSelect.value = '78';
         if (darkModeSelect) darkModeSelect.value = 'off';
         saveSettings();
+    }
+
+    /** Cruise method / plot size / collection mode selects match the current settings. */
+    function syncCruiseControls() {
+        const m = document.getElementById('cruiseMethodSelect'), ps = document.getElementById('plotSizeSelect'), em = document.getElementById('entryModeSelect');
+        if (m) m.value = currentCruiseMethod;
+        if (ps) ps.value = String(currentPlotAcres);
+        if (em) em.value = currentEntryMode;
+        const bg = document.getElementById('bafGroup'), pg = document.getElementById('plotSizeGroup');
+        if (bg) bg.hidden = currentCruiseMethod === 'fixed';
+        if (pg) pg.hidden = currentCruiseMethod !== 'fixed';
+        document.body.classList.toggle('entry-grid', currentEntryMode === 'grid');
     }
 
     function applyDarkMode() {
@@ -549,37 +615,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // UI POPULATION & DISPLAY
     // ============================================================
-    function updatePlotNumberAndAreaFromData() {
-        let lastPlot = null, lastAreaIdx = null;
-        for (let i = collectedData.length - 1; i >= 0; i--) {
-            const e = collectedData[i];
-            if (e?.plotNumber && lastPlot === null) {
-                const n = parseInt(e.plotNumber, 10);
-                if (!isNaN(n) && n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) lastPlot = n;
-            }
-            if (e?.areaLetter && lastAreaIdx === null) {
-                const idx = areaLetters.indexOf(e.areaLetter);
-                if (idx !== -1) lastAreaIdx = idx;
-            }
-            if (lastPlot !== null && lastAreaIdx !== null) break;
-        }
-        currentPlotNumber = lastPlot ?? 1;
-        currentAreaIndex  = lastAreaIdx ?? 0;
-        updatePlotDisplay(); updateAreaDisplay();
-    }
 
     // DBH / Logs scroll wheels (scroll-wheel.js). Hidden inputs hold the values for submit.
-    // Trees 10" and under are always 0 logs; larger trees take 0.5–6 logs or Cull.
+    // Trees 10" and under are always 0 logs; larger trees take the log counts the volume
+    // tables hold for that DBH (forestry-calc.js logsChoicesFor: up to 4 at 12-18", 5 at
+    // 20-26", 6 at 28"+) or Cull, so every choice has a board-foot volume.
     const DBH_MIN = 4, DBH_MAX = 40, DBH_STEP = 2, MAX_ZERO_LOG_DBH = 10;
     const DBH_VALUES = [];
     for (let d = DBH_MIN; d <= DBH_MAX; d += DBH_STEP) DBH_VALUES.push({ value: String(d), label: `${d}"` });
-    const LOG_CHOICES = ['0.5','1','1.5','2','2.5','3','3.5','4','4.5','5','5.5','6','Cull'];
-    const logsWheelValues = dbh => (parseInt(dbh, 10) <= MAX_ZERO_LOG_DBH ? ['0'] : LOG_CHOICES).map(v => ({ value: v, label: v }));
+    const logsWheelValues = dbh => (parseInt(dbh, 10) <= MAX_ZERO_LOG_DBH ? ['0'] : [...logsChoicesFor(dbh), 'Cull']).map(v => ({ value: v, label: v }));
     let dbhWheel = null, logsWheel = null;
 
     function setLogsValue(v) {
         if (logsSelect) logsSelect.value = v;
         if (logsWheel && logsWheel.getValue() !== v) logsWheel.setValue(v);
+        window.TapGrid?.sync();
     }
     function setDbhValue(val) {
         const clamped = Math.max(DBH_MIN, Math.min(DBH_MAX, val));
@@ -587,7 +637,28 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dbhWheel && dbhWheel.getValue() !== String(clamped)) dbhWheel.setValue(String(clamped));
         checkAndSetLogsForDbh();
         updateBorderlineText();
+        window.TapGrid?.sync();
     }
+    /** Shared DBH / Logs state for the tap grid (tap-grid.js): the wheels and grid stay in step. */
+    /** The open project for property.js / merge.js. */
+    window.ttProject = {
+        get: () => currentProject,
+        getData: () => collectedData,
+        /** Replaces the open project's trees (merge.js) and redraws everything. */
+        setData: data => { collectedData = data; renderEntries(); updatePlotDisplay(); updateAreaDisplay(); return saveSessionData(); },
+        save: () => saveSessionData(),
+        safetyCopy: reason => safetyCopy(reason),
+    };
+    window.ttEntry = {
+        dbhValues: () => DBH_VALUES.map(v => v.value),
+        logValues: dbh => logsWheelValues(dbh).map(v => v.value),
+        getDbh: () => dbhSelect?.value || '',
+        getLogs: () => logsSelect?.value || '',
+        setDbh: d => setDbhValue(parseInt(d, 10)),
+        setLogs: v => setLogsValue(v),
+        submit: () => handleSubmitEntry(),
+        mode: () => currentEntryMode,
+    };
     function populateDbhOptions() {
         const el = document.getElementById('dbhWheel');
         if (el && window.createScrollWheel) {
@@ -609,7 +680,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!dbhSelect || !logsSelect) return;
         const vals = logsWheelValues(dbhSelect.value);
         const cur = logsSelect.value;
-        const next = vals.some(v => v.value === cur) ? cur : (vals.length > 1 ? vals[1].value : vals[0].value);
+        let next;
+        if (vals.some(v => v.value === cur)) next = cur;
+        else if (vals.length === 1) next = vals[0].value;
+        else {
+            // More logs than this DBH's table holds: clamp to the largest it has; else 1 log.
+            const nums = vals.filter(v => v.value !== 'Cull').map(v => v.value);
+            const n = parseFloat(cur);
+            next = n > parseFloat(nums[nums.length - 1]) ? nums[nums.length - 1] : (nums.includes('1') ? '1' : nums[0]);
+        }
         if (logsWheel) logsWheel.setValues(vals, next);
         setLogsValue(next);
     }
@@ -673,7 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             quickPickKey = key;
             const top = topSpecies();
             const slots = top.length > 4 ? 8 : 4;
-            box.innerHTML = top.map(s => `<button type="button" class="sp-btn" data-species="${s.replace(/"/g, '&quot;')}" title="${s.replace(/"/g, '&quot;')}">${s}</button>`).join('')
+            box.innerHTML = top.map(s => `<button type="button" class="sp-btn" data-species="${escHtml(s)}" title="${escHtml(s)}">${escHtml(s)}</button>`).join('')
                 + Array.from({ length: slots - top.length }, () => '<button type="button" class="sp-btn species-quick-empty" disabled aria-hidden="true" tabindex="-1"></button>').join('');
             fitQuickLabels(box);
         }
@@ -752,19 +831,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.emptyPlot) {
                     tr.className = 'empty-plot-row';
                     tr.innerHTML = `
-                    <td><input type="checkbox" data-id="${e.id}"></td>
-                    <td>${e.plotNumber ?? '?'}</td>
-                    <td>${e.areaLetter ?? '?'}</td>
+                    <td><input type="checkbox" data-id="${escHtml(e.id)}"></td>
+                    <td>${escHtml(e.plotNumber ?? '?')}</td>
+                    <td>${escHtml(e.areaLetter ?? '?')}</td>
                     <td colspan="5">Empty plot (no tally trees)</td>`;
                 } else tr.innerHTML = `
-                    <td><input type="checkbox" data-id="${e.id}"></td>
-                    <td>${e.plotNumber ?? '?'}</td>
-                    <td>${e.areaLetter ?? '?'}</td>
+                    <td><input type="checkbox" data-id="${escHtml(e.id)}"></td>
+                    <td>${escHtml(e.plotNumber ?? '?')}</td>
+                    <td>${escHtml(e.areaLetter ?? '?')}</td>
                     <td>${escHtml(e.species ?? 'N/A')}</td>
                     <td>${escHtml(e.dbh ?? '?')}</td>
                     <td>${escHtml(e.logs ?? '?')}</td>
-                    <td>${e.cutStatus || 'No'}</td>
-                    <td>${e.ugsStatus || 'No'}</td>`;
+                    <td>${escHtml(e.cutStatus || 'No')}</td>
+                    <td>${escHtml(e.ugsStatus || 'No')}</td>`;
                 entriesTableBody.appendChild(tr);
             }
         }
@@ -780,44 +859,60 @@ document.addEventListener('DOMContentLoaded', () => {
         return entriesTableBody?.querySelector('input[type="checkbox"]:checked') !== null;
     }
 
+    /** Small ⓘ that opens a term's meaning (glossary.js). */
+    const ti = k => (window.ttTermBtn ? window.ttTermBtn(k) : '');
+
+    // "Enough plots?" panel for the current Area (ForestScribe's SamplingStats).
+    // Uses the per-plot volume stats (BAF or fixed plots, empty plots count) and
+    // t = 2, so it matches the Summary Report and CSV. Collapsed: plots needed
+    // for ±10/15/20%; expanded: sampling error, mean, 95% CI, SE and CV.
+    const SAMPLING_OPEN_KEY = 'tt3.samplingOpen';
+    let samplingOpen = false;
+    try { samplingOpen = localStorage.getItem(SAMPLING_OPEN_KEY) === '1'; } catch (_) { /* private mode */ }
+    function setSamplingOpen(open) {
+        samplingOpen = open;
+        try { localStorage.setItem(SAMPLING_OPEN_KEY, open ? '1' : '0'); } catch (_) { /* ignore */ }
+        calculateAndDisplayNeededPlots();
+    }
+    document.getElementById('samplingToggle')?.addEventListener('click', () => setSamplingOpen(!samplingOpen));
+
     function calculateAndDisplayNeededPlots() {
         if (!neededPlotsValue) return;
+        const toggle = document.getElementById('samplingToggle');
+        const detail = document.getElementById('samplingDetail');
         const letter = areaLetters[currentAreaIndex];
         const areaData = collectedData.filter(e => e.areaLetter === letter);
-        const plotCount = new Set(areaData.map(e => e.plotNumber).filter(p => p != null)).size;
-        const stats = calculatePlotStats(areaData, currentBaf, currentLogRule, currentFormClass);
+        const stats = calculatePlotStats(areaData, cruiseSpec(), currentLogRule, currentFormClass);
+        const n = stats ? stats.numValidPlots : 0;
+        const ready = stats && n >= 2 && stats.meanV > 0;
+        const t = 2;
+        const fmtN = v => Math.round(v).toLocaleString();
+        const need = E => plotsNeeded(stats.cvV, E, t);
+        const mark = E => n >= need(E)
+            ? `<span class="met">✓${need(E)}</span>`
+            : `<span class="not-met">${need(E)}</span>`;
 
-        // Sampling error and 95% confidence interval for the Area's volume (t = 2).
-        const samplingLine = document.getElementById('samplingLine');
-        if (samplingLine) {
-            if (stats && plotCount >= 2 && stats.meanV > 0) {
-                const se = stats.stdDevV / Math.sqrt(stats.numValidPlots);
-                const pct = (2 * se / stats.meanV) * 100;
-                const lo = Math.max(0, Math.round(stats.meanV - 2 * se)), hi = Math.round(stats.meanV + 2 * se);
-                const ok = pct <= 15;
-                samplingLine.innerHTML = `Sampling error <b style="color:${ok ? '#28a745' : '#c0392b'}">±${pct.toFixed(1)}%</b> · 95% CI ${lo.toLocaleString()}–${hi.toLocaleString()} BF/ac`;
-                samplingLine.title = `Mean ${Math.round(stats.meanV).toLocaleString()} BF/ac, standard error ±${Math.round(se).toLocaleString()} BF/ac, ${stats.numValidPlots} plots (t = 2). Green at ±15% or better.`;
-                samplingLine.hidden = false;
-            } else samplingLine.hidden = true;
+        neededPlotsValue.innerHTML = ready
+            ? `Plots needed ±10%: ${mark(10)} &nbsp;±15%: ${mark(15)} &nbsp;±20%: ${mark(20)}`
+            : 'Plots needed: need 2+ plots';
+        const open = samplingOpen && ready;
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', String(open));
+            toggle.classList.toggle('open', open);
+            toggle.disabled = !ready;
         }
-
-        if (stats && plotCount >= 2 && stats.cvV > 0) {
-            const cv = stats.cvV, t = 2;
-            // Freese formula: n = ceil((t*CV/E)^2). Show 0/✓ if already met.
-            const needed = (E) => {
-                const n = Math.ceil(Math.pow(t * cv / E, 2));
-                return plotCount >= n ? 0 : n;
-            };
-            const n10 = needed(10), n20 = needed(20), n30 = needed(30);
-            const fmt = (n, label) => n === 0
-                ? `<span style="color:#28a745;font-weight:700;">${label}:✓</span>`
-                : `${label}:${n}`;
-            neededPlotsValue.innerHTML = `${fmt(n10,'10%')} ${fmt(n20,'20%')} ${fmt(n30,'30%')}`;
-        } else if (areaData.length > 0 && plotCount < 2) {
-            neededPlotsValue.textContent = 'Need ≥2 plots';
-        } else {
-            neededPlotsValue.textContent = '---';
-        }
+        if (!detail) return;
+        detail.hidden = !open;
+        if (!open) { detail.innerHTML = ''; return; }
+        const se = stats.stdDevV / Math.sqrt(n);
+        const pct = (t * se / stats.meanV) * 100;
+        const lo = Math.max(0, Math.round(stats.meanV - t * se)), hi = Math.round(stats.meanV + t * se);
+        const adequate = pct <= 15;
+        detail.innerHTML =
+            `<div><b>Enough plots?</b> (${n} plots) ${adequate ? '<span class="met">✓ Yes</span>' : '<span class="not-met">Not yet</span>'}</div>` +
+            `<div>Sampling error ${ti('samplingError')} <b>${pct.toFixed(1)}%</b> · Mean <b>${fmtN(stats.meanV)} BF/ac</b></div>` +
+            `<div>95% CI ${ti('ci')} <b>${lo.toLocaleString()} – ${hi.toLocaleString()} BF/ac</b> · SE ${ti('se')} <b>±${fmtN(se)}</b> · CV ${ti('cv')} <b>${stats.cvV.toFixed(1)}%</b></div>` +
+            `<div>Plots needed for ±10%: ${mark(10)} &nbsp; ±15%: ${mark(15)} &nbsp; ±20%: ${mark(20)}</div>`;
     }
 
     // ============================================================
@@ -834,10 +929,10 @@ document.addEventListener('DOMContentLoaded', () => {
         speciesKeys.forEach(species => {
             const div = document.createElement('div');
             div.classList.add('tally-species');
-            div.innerHTML = `<h3>${species}</h3>`;
+            div.innerHTML = `<h3>${escHtml(species)}</h3>`;
             const dbhKeys = Object.keys(tallyData[species]).sort((a,b) => Number(a)-Number(b));
             dbhKeys.forEach(dbh => {
-                div.innerHTML += `<h4>DBH: ${dbh}"</h4>`;
+                div.innerHTML += `<h4>DBH: ${escHtml(dbh)}"</h4>`;
                 const logKeys = Object.keys(tallyData[species][dbh]).sort((a,b) => {
                     if (a==='Cull') return 1; if (b==='Cull') return -1;
                     const nA=parseFloat(a), nB=parseFloat(b);
@@ -846,8 +941,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 logKeys.forEach(logs => {
                     const counts = tallyData[species][dbh][logs];
                     const cut = counts['Yes'] || 0, notCut = counts['No'] || 0;
-                    if (cut > 0) div.innerHTML += `<div class="tally-log-item"><span class="log-label">Logs: ${logs} (Cut)</span> — <span class="log-count">${cut}</span></div>`;
-                    if (notCut > 0) div.innerHTML += `<div class="tally-log-item"><span class="log-label">Logs: ${logs} (Leave)</span> — <span class="log-count">${notCut}</span></div>`;
+                    if (cut > 0) div.innerHTML += `<div class="tally-log-item"><span class="log-label">Logs: ${escHtml(logs)} (Cut)</span> — <span class="log-count">${cut}</span></div>`;
+                    if (notCut > 0) div.innerHTML += `<div class="tally-log-item"><span class="log-label">Logs: ${escHtml(logs)} (Leave)</span> — <span class="log-count">${notCut}</span></div>`;
                 });
             });
             tallyResults.appendChild(div);
@@ -858,7 +953,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // STOCKING CHART (wrapper — rendering delegated to charts.js)
     // ============================================================
     function renderStockingChart() {
-        const areaStats = calculateStandStocking(collectedData, currentBaf);
+        const areaStats = calculateStandStocking(collectedData, cruiseSpec());
         if (!areaStats?.length) {
             if (stockingResults) stockingResults.style.display = 'none';
             if (stockingNoData) stockingNoData.style.display = 'block';
@@ -872,10 +967,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const f0 = v => v.toFixed(0), f1 = v => v.toFixed(1);
             const levelCls = l => (l === 'Overstocked' ? 'stk-over' : l === 'Fully stocked' ? 'stk-full' : 'stk-under');
             const anyCut = areaStats.some(s => s.cutTpa > 0);
-            let html = `<table><thead><tr><th>Area</th><th>Plots</th><th>TPA</th><th>BA/Ac</th><th>QMD</th><th>Stocking</th>${anyCut ? '<th>Cut TPA</th><th>Cut BA/Ac</th><th>Leave TPA</th><th>Leave BA/Ac</th><th>After Cut</th>' : ''}</tr></thead><tbody>`;
+            let html = `<table><thead><tr><th>Area</th><th>Plots</th><th>TPA ${ti('tpa')}</th><th>BA/Ac ${ti('ba')}</th><th>QMD ${ti('qmd')}</th><th>Stocking ${ti('stocking')}</th>${anyCut ? '<th>Cut TPA</th><th>Cut BA/Ac</th><th>Leave TPA</th><th>Leave BA/Ac</th><th>After Cut</th>' : ''}</tr></thead><tbody>`;
             areaStats.forEach(s => {
                 html += `<tr>
-                    <td><strong>${s.area}</strong></td>
+                    <td><strong>${escHtml(s.area)}</strong></td>
                     <td>${s.numPlots}</td>
                     <td>${f0(s.totalTpa)}</td>
                     <td>${f1(s.totalBa)}</td>
@@ -907,24 +1002,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (subset.length === 0) {
                 tallySummaryCards.innerHTML = '<p class="placeholder-msg" style="padding:10px 12px; margin:0;">No data for selected area.</p>';
             } else {
-                const report = calculateForestryReport(subset, currentBaf, currentLogRule, currentFormClass);
+                const report = calculateForestryReport(subset, cruiseSpec(), currentLogRule, currentFormClass);
                 const s = report.summary;
                 tallySummaryCards.innerHTML = `
                     <div class="stat-card">
                         <span class="stat-value">${s.totalTreesPerAcre != null ? s.totalTreesPerAcre.toFixed(1) : '—'}</span>
-                        <span class="stat-label">Trees/Acre</span>
+                        <span class="stat-label">Trees/Acre ${ti('tpa')}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-value">${s.totalBaPerAcre != null ? s.totalBaPerAcre.toFixed(1) : '—'}</span>
-                        <span class="stat-label">BA/Acre (sq ft)</span>
+                        <span class="stat-label">BA/Acre (sq ft) ${ti('ba')}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-value">${s.avgTractDbh != null ? s.avgTractDbh.toFixed(1) + '"' : '—'}</span>
-                        <span class="stat-label">Avg DBH (QMD)</span>
+                        <span class="stat-label">Avg DBH (QMD) ${ti('qmd')}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-value">${s.totalVolPerAcre != null ? Math.round(s.totalVolPerAcre) : '—'}</span>
-                        <span class="stat-label">Vol/Acre (BF)</span>
+                        <span class="stat-label">Vol/Acre (BF) ${ti('vol')}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-value">${s.numberOfPlots != null ? s.numberOfPlots : '—'}</span>
@@ -949,9 +1044,19 @@ document.addEventListener('DOMContentLoaded', () => {
         // Gingrich stocking chart (every Area)
         renderStockingChart();
 
+        // Property table (property.js): every Area weighted by acres, on All Areas
+        const propBox = document.getElementById('propertyTable');
+        if (propBox) {
+            const html = selectedArea === 'ALL' && typeof calculatePropertySummary === 'function'
+                ? renderPropertyTableHtml(calculatePropertySummary(collectedData, currentProject?.areaAcres, cruiseSpec(), currentLogRule, currentFormClass)) : '';
+            propBox.innerHTML = html;
+            propBox.hidden = !html;
+        }
+
         // In-app charts — charts.js manages instances
         tallyChartInstances.forEach(c => { try { c.destroy(); } catch(e) {} });
-        tallyChartInstances = renderTallyCharts(subset, currentBaf, currentLogRule, currentFormClass, tallyChartsContainer);
+        tallyChartInstances = renderTallyCharts(subset, cruiseSpec(), currentLogRule, currentFormClass, tallyChartsContainer);
+        window.TTCheckData?.refresh();
     }
 
     function updateTallyAreaDropdown() {
@@ -972,7 +1077,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // CSV PARSING
     // ============================================================
     function parseCsvAndLoadData(csvContent) {
-        const lines = csvContent.split(/\r?\n/);
+        // One shared record splitter (csv-match.js): line breaks inside quoted notes stay in the note.
+        const lines = splitCsvRecords(String(csvContent).replace(/^\uFEFF/, ''));
         let headerIndex = -1, headers = [];
         for (let i = 0; i < lines.length; i++) {
             const norm = lines[i].trim().toLowerCase().split(',').map(h => h.trim().replace(/\s/g,''));
@@ -1001,6 +1107,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 else cur += c;
             }
             values.push(cur.trim());
+            for (const k of [idx.sp, idx.n]) if (k > -1 && values[k] != null) values[k] = csvUnguard(values[k]);
             if (values.length <= Math.max(idx.p,idx.d,idx.sp,idx.l,idx.c)) continue;
             try {
                 const plotNum = parseInt(values[idx.p], 10);
@@ -1041,10 +1148,34 @@ document.addEventListener('DOMContentLoaded', () => {
      *   Area notes (.txt), when any were written
      * On a phone the ZIP goes to the share sheet (Files, email, Drive) in one step.
      */
+    /**
+     * The tree rows of an Area CSV (the raw section Import, Match Columns and Merge read back).
+     * Text (species, notes) goes through csvCell: quotes doubled, line breaks kept inside the
+     * quotes, and a leading = + - @ guarded with ' so a spreadsheet does not run it.
+     * Numbers (plot, DBH, logs, GPS) are written as plain numbers (a negative longitude stays a number).
+     */
+    function entriesCsv(areaData) {
+        const num = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? '' : String(Number(v)));
+        const area = e => (/^[A-Z]$/.test(e.areaLetter || '') ? e.areaLetter : '');
+        let raw = "PlotNumber,Area,DBH,Species,Logs,Cut,UGS,Notes,Latitude,Longitude\n";
+        areaData.forEach(e => {
+            if (!e) return;
+            const loc = e.location || {};
+            const gps = `${num(loc.lat)},${num(loc.lon)}`;
+            if (e.emptyPlot) {
+                raw += `${num(e.plotNumber)},${area(e)},0,"EMPTY PLOT",0,No,No,"No tally trees",${gps}\n`;
+                return;
+            }
+            const logs = e.logs === 'Cull' ? 'Cull' : num(e.logs);
+            raw += `${num(e.plotNumber)},${area(e)},${num(e.dbh)},${csvCell(e.species ?? '')},${logs},${e.cutStatus === 'Yes' ? 'Yes' : 'No'},${e.ugsStatus === 'Yes' ? 'Yes' : 'No'},${csvCell(e.notes || '')},${gps}\n`;
+        });
+        return raw;
+    }
+
     async function generateAndDownloadCsv() {
         if (!collectedData.length) { showFeedback("No data to save.", true); return; }
         if (typeof JSZip === 'undefined') { showFeedback("The ZIP tool did not load. Reload the app and try again.", true, 6000); return; }
-        const selBaf = currentBaf, selRule = currentLogRule, selFc = currentFormClass;
+        const selBaf = cruiseSpec(), selRule = currentLogRule, selFc = currentFormClass;
         if (saveCsvBtn) saveCsvBtn.disabled = true;
         showFeedback("Building ZIP...", false, 10000);
         const zip = new JSZip();
@@ -1092,19 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } catch(e) { console.error('Graphs sheet export error:', e); }
                 }
 
-                // Build CSV
-                let raw = "PlotNumber,Area,DBH,Species,Logs,Cut,UGS,Notes,Latitude,Longitude\n";
-                areaData.forEach(e => {
-                    if (!e) return;
-                    if (e.emptyPlot) {
-                        const loc = e.location || {};
-                        raw += `${e.plotNumber},${e.areaLetter},0,"EMPTY PLOT",0,No,No,"No tally trees",${loc.lat||''},${loc.lon||''}\n`;
-                        return;
-                    }
-                    const notes = `"${(e.notes||'').replace(/"/g,'""')}"`;
-                    const loc = e.location || {};
-                    raw += `${e.plotNumber??'?'},${e.areaLetter??'?'},${e.dbh??'?'},"${e.species??'N/A'}",${e.logs??'?'},${e.cutStatus||'No'},${e.ugsStatus||'No'},${notes},${loc.lat||''},${loc.lon||''}\n`;
-                });
+                const raw = entriesCsv(areaData);
 
                 let tallyCsv = "\n\n--- TALLY DATA ---\nSpecies,DBH,Logs,Cut Status,Count\n";
                 if (tallyData) {
@@ -1112,14 +1231,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         Object.keys(tallyData[sp]).sort((a,b)=>Number(a)-Number(b)).forEach(dbh => {
                             Object.keys(tallyData[sp][dbh]).sort((a,b)=>{if(a==='Cull')return 1;if(b==='Cull')return -1;return (parseFloat(a)||0)-(parseFloat(b)||0);}).forEach(logs => {
                                 const c = tallyData[sp][dbh][logs];
-                                if (c['Yes']>0) tallyCsv+=`"${sp}",${dbh},${logs},"Yes",${c['Yes']}\n`;
-                                if (c['No']>0)  tallyCsv+=`"${sp}",${dbh},${logs},"No",${c['No']}\n`;
+                                if (c['Yes']>0) tallyCsv+=`${csvCell(sp)},${dbh},${logs},"Yes",${c['Yes']}\n`;
+                                if (c['No']>0)  tallyCsv+=`${csvCell(sp)},${dbh},${logs},"No",${c['No']}\n`;
                             });
                         });
                     });
                 }
 
-                let plotCsv = `\n\n--- PER-PLOT VOLUME & STATS (Rule:${selRule}${selRule==='Doyle'?' FC'+selFc:''}, BAF:${selBaf}) ---\n`;
+                let plotCsv = `\n\n--- PER-PLOT VOLUME & STATS (Rule:${selRule}${selRule==='Doyle'?' FC'+selFc:''}, ${cruiseCsvTag(selBaf, ':')}) ---\n`;
                 if (plotStats?.numValidPlots > 0) {
                     plotCsv += "Plot,Volume (BF/Acre)\n";
                     const plotsInArea = {};
@@ -1133,8 +1252,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else plotCsv += "No plot data.\n";
 
                 const reportCsv = reportData ? (() => { try { return formatReportForCsv(reportData); } catch(e) { return "\n--- FORESTRY REPORT DATA ---\nError formatting report.\n"; } })() : "\n--- FORESTRY REPORT DATA ---\nReport failed.\n";
-                zip.file(`${nameBase}_${ruleP}${fcP}_BAF${selBaf}.csv`, raw + tallyCsv + plotCsv + reportCsv);
+                zip.file(`${nameBase}_${ruleP}${fcP}_${cruiseFileTag(selBaf)}.csv`, raw + tallyCsv + plotCsv + reportCsv);
+
+                // Stand & stock tables (property.js)
+                try {
+                    if (reportData?.summary?.numberOfPlots > 0) {
+                        const acres = currentProject?.areaAcres?.[areaLetter];
+                        const st = calculateStandStockTable(areaData, selBaf, selRule, selFc);
+                        if (st.species.length) zip.file(`${nameBase}_Stand_Stock.csv`, formatStandStockCsv(st, `${projName} — Area ${areaLetter}${acres > 0 ? ` — ${acres} acres` : ''} — Stand and Stock Tables`, selBaf));
+                    }
+                } catch(e) { console.error('Stand & stock export error:', e); }
             }
+
+            // Property Summary (property.js): 2+ Areas with trees
+            try {
+                const ps = calculatePropertySummary(collectedData, currentProject?.areaAcres, selBaf, selRule, selFc);
+                if (ps.rows.length >= 2) await addCanvasPng(await buildPropertySummaryCanvas(ps, projName, selRule, selFc, selBaf), `${projBase}_Property_Summary.png`);
+            } catch(e) { console.error('Property summary export error:', e); }
 
             // Gingrich stocking chart: every Area on one chart
             try {
@@ -1168,7 +1302,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Entries that stand for a plot with no tally trees (Record empty plot). They count
     // toward the number of plots (so per-acre values stay right) but hold no tree.
     const isEmptyPlot = e => !!e?.emptyPlot;
-    const escHtml = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const plotEntries = (letter, plot) => collectedData.filter(e => e.areaLetter === letter && e.plotNumber === plot);
 
     let submitBusy = false;
@@ -1372,7 +1505,7 @@ document.addEventListener('DOMContentLoaded', () => {
     /** Logs choices for a DBH; `keepLegacy` keeps an older entry's value (e.g. 0 logs on a 14") when the box opens. */
     function editLogsFor(dbh, current, keepLegacy = false) {
         const vals = logsWheelValues(dbh).map(v => v.value);
-        const next = vals.includes(current) ? current : keepLegacy && current ? current : (vals.length > 1 ? vals[1] : vals[0]);
+        const next = vals.includes(current) ? current : keepLegacy && current ? current : (vals.includes('1') ? '1' : vals[0]);
         fillSelect($id('editLogs'), vals, next);
     }
     function openEditEntry(id) {
@@ -1436,23 +1569,29 @@ document.addEventListener('DOMContentLoaded', () => {
         currentPlotNumber = plot; currentAreaIndex = area;
         updatePlotDisplay(); updateAreaDisplay(); calculateAndDisplayNeededPlots();
         saveSessionData();
+        document.dispatchEvent(new CustomEvent('tt:entries-changed'));
     }
 
     // ============================================================
     // BORDERLINE TREES (prism): limiting distance for the DBH on the wheel
     // ============================================================
     const plotRadiusFactor = () => Math.sqrt(75.625 / (currentBaf || 10));
-    const limitingDistanceFt = dbh => (dbh > 0 ? dbh * plotRadiusFactor() : null);
+    // Fixed plots: one radius for every tree, whatever its DBH.
+    const limitingDistanceFt = dbh => (currentCruiseMethod === 'fixed' ? fixedPlotRadiusFt(currentPlotAcres) : dbh > 0 ? dbh * plotRadiusFactor() : null);
     function updateBorderlineText() {
         const el = document.getElementById('borderlineText');
         if (!el || !dbhSelect) return;
         const d = parseInt(dbhSelect.value, 10);
-        el.textContent = `Borderline ${d}": in within ${limitingDistanceFt(d).toFixed(1)} ft (BAF ${currentBaf})`;
+        el.textContent = currentCruiseMethod === 'fixed'
+            ? `Plot radius ${fixedPlotRadiusFt(currentPlotAcres).toFixed(1)} ft: trees inside are in (${cruiseLabel(cruiseSpec())})`
+            : `Borderline ${d}": in within ${limitingDistanceFt(d).toFixed(1)} ft (BAF ${currentBaf})`;
     }
     function renderBorderline() {
         const d = parseFloat($id('blDbh').value), face = parseFloat($id('blDist').value);
         const ld = limitingDistanceFt(d);
-        $id('borderlineRule').textContent = `BAF ${currentBaf}: a tree is in when the distance from plot center to the tree's center is at most ${plotRadiusFactor().toFixed(3)} ft per inch of DBH.`;
+        $id('borderlineRule').textContent = currentCruiseMethod === 'fixed'
+            ? `${cruiseLabel(cruiseSpec())}: a tree is in when the distance from plot center to the tree's center is at most the plot radius, ${fixedPlotRadiusFt(currentPlotAcres).toFixed(1)} ft, whatever its DBH.`
+            : `BAF ${currentBaf}: a tree is in when the distance from plot center to the tree's center is at most ${plotRadiusFactor().toFixed(3)} ft per inch of DBH.`;
         const res = $id('blResult');
         if (ld == null) res.innerHTML = '';
         else {
@@ -1475,22 +1614,22 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => $id('blDist').focus(), 50);
     }
 
-    function handleDeleteSelected() {
+    async function handleDeleteSelected() {
         if (!entriesTableBody) return;
         const checks = entriesTableBody.querySelectorAll('input[type="checkbox"]:checked');
         if (!checks.length) { showFeedback("No entries selected.", true); return; }
         const ids = new Set(Array.from(checks).map(cb => parseInt(cb.getAttribute('data-id'),10)).filter(id => !isNaN(id)));
         if (!confirm(`Delete ${ids.size} selected ${ids.size===1?'entry':'entries'}?`)) return;
-        if (!safetyCopy(`Before deleting ${ids.size} ${ids.size===1?'entry':'entries'}`)) return;
+        if (!(await safetyCopy(`Before deleting ${ids.size} ${ids.size===1?'entry':'entries'}`))) return;
         collectedData = collectedData.filter(e => !(e?.id && ids.has(e.id)));
         renderEntries(); saveSessionData();
         showFeedback(`${ids.size} ${ids.size===1?'entry':'entries'} deleted.`);
     }
 
-    function handleDeleteAll() {
+    async function handleDeleteAll() {
         if (!collectedData.length) { showFeedback("No data to delete.", true); return; }
         if (!confirm(`Delete ALL ${collectedData.length} entries in "${currentProject?.name}"?\n\nA safety copy is kept for 7 days (Projects tab).`)) return;
-        if (!safetyCopy('Delete All Data')) return;
+        if (!(await safetyCopy('Delete All Data'))) return;
         collectedData = [];
         currentAreaIndex = 0; currentPlotNumber = 1;
         renderEntries();
@@ -1509,9 +1648,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // TAB SWITCHING
     // ============================================================
     function switchTab(tabId) {
+        // The species panel belongs to the Data tab (it has no tab button of its own).
+        const navTab = tabId === 'species' ? 'takeData' : tabId;
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tabId);
-            btn.setAttribute('aria-selected', String(btn.dataset.tab === tabId));
+            btn.classList.toggle('active', btn.dataset.tab === navTab);
+            btn.setAttribute('aria-selected', String(btn.dataset.tab === navTab));
         });
         document.querySelectorAll('.tab-panel').forEach(panel => {
             const isActive = panel.id === `tab-${tabId}`;
@@ -1650,16 +1791,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentAreaIndex < areaLetters.length-1) { currentAreaIndex++; updateAreaDisplay(); calculateAndDisplayNeededPlots(); saveSessionData(); }
     });
 
-    if (toggleSettingsBtn) {
-        toggleSettingsBtn.addEventListener('click', () => {
-            if (!settingsSection) return;
-            const isHidden = settingsSection.hidden;
-            settingsSection.hidden = !isHidden;
-            toggleSettingsBtn.setAttribute('aria-expanded', String(isHidden));
-            toggleSettingsBtn.innerHTML = isHidden ? '&#10005; Settings' : '&#9881; Settings';
-        });
+    // Settings sheet (☰ Menu → Settings): full height, Done / Esc / tap outside closes it.
+    let settingsReturnFocus = null;
+    function openSettings() {
+        if (!settingsSection) return;
+        settingsReturnFocus = document.activeElement;
+        settingsSection.hidden = false;
+        settingsSection.scrollTop = 0;
+        document.body.classList.add('sheet-open');
+        document.getElementById('settingsDoneBtn')?.focus();
     }
+    function closeSettings() {
+        if (!settingsSection || settingsSection.hidden) return;
+        settingsSection.hidden = true;
+        document.body.classList.remove('sheet-open');
+        if (settingsReturnFocus && document.contains(settingsReturnFocus)) settingsReturnFocus.focus?.();
+    }
+    document.getElementById('settingsDoneBtn')?.addEventListener('click', closeSettings);
+    settingsSection?.addEventListener('click', e => { if (e.target === settingsSection) closeSettings(); });
+    document.addEventListener('keydown', e => {
+        // Esc closes the sheet unless a dialog opened from it (Tree ID Key, ⓘ) is on top.
+        if (e.key !== 'Escape' || !settingsSection || settingsSection.hidden) return;
+        if (treeKeyModal && treeKeyModal.style.display === 'flex') return;
+        if (document.querySelector('.tt-tour-overlay')) return;
+        closeSettings();
+    });
+    window.TTSettings = { open: openSettings, close: closeSettings, isOpen: () => !!settingsSection && !settingsSection.hidden };
 
+    const cruiseChanged = msg => { syncCruiseControls(); saveSettings(); showSettingsFeedback(msg); calculateAndDisplayNeededPlots(); updateBorderlineText(); };
+    document.getElementById('cruiseMethodSelect')?.addEventListener('change', e => { currentCruiseMethod = e.target.value === 'fixed' ? 'fixed' : 'baf'; cruiseChanged(`Cruise: ${cruiseLabel(cruiseSpec())}`); });
+    document.getElementById('plotSizeSelect')?.addEventListener('change', e => { currentPlotAcres = Number(e.target.value) || 0.1; cruiseChanged(`Cruise: ${cruiseLabel(cruiseSpec())}`); });
+    document.getElementById('entryModeSelect')?.addEventListener('change', e => { currentEntryMode = e.target.value === 'grid' ? 'grid' : 'wheel'; syncCruiseControls(); saveSettings(); showSettingsFeedback(currentEntryMode === 'grid' ? 'Collection: Tap Grid' : 'Collection: Scroll Wheel'); });
     if (bafSelect) bafSelect.addEventListener('change', e => { currentBaf = parseInt(e.target.value,10); saveSettings(); showSettingsFeedback(`BAF = ${currentBaf}`); calculateAndDisplayNeededPlots(); updateBorderlineText(); });
     if (logRuleSelect) logRuleSelect.addEventListener('change', e => { currentLogRule = e.target.value; saveSettings(); showSettingsFeedback(`Rule: ${currentLogRule}`); checkAndSetLogsForDbh(); calculateAndDisplayNeededPlots(); updateFormClassVisibility(); });
     if (formClassSelect) formClassSelect.addEventListener('change', e => { currentFormClass = parseInt(e.target.value,10); saveSettings(); showSettingsFeedback(`Doyle FC: ${currentFormClass}`); calculateAndDisplayNeededPlots(); });
@@ -1695,7 +1857,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (showInfoBtn) showInfoBtn.addEventListener('click', () => window.open('./README.md', '_blank', 'noopener'));
+    if (showInfoBtn) showInfoBtn.addEventListener('click', () => window.TTInfo ? window.TTInfo.open() : window.open(README_URL, '_blank', 'noopener'));
 
     // Species management
     if (addSpeciesBtn) addSpeciesBtn.addEventListener('click', () => {
@@ -1767,44 +1929,79 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const reader = new FileReader();
         reader.onload = e => {
+            const text = e.target.result;
+            let parsed;
             try {
-                const parsed = parseCsvAndLoadData(e.target.result);
-                if (!parsed.length) { showProjectFeedback("No valid data found in CSV.", true); if (csvFileInput) csvFileInput.value=null; return; }
-                let chosenArea = null;
-                do {
-                    chosenArea = prompt(`Enter Area Letter (A-Z) for all ${parsed.length} entries from "${file.name}":`, areaLetters[currentAreaIndex]);
-                    if (chosenArea === null) { showProjectFeedback("CSV load cancelled.", false); if (csvFileInput) csvFileInput.value=null; return; }
-                    chosenArea = chosenArea.trim().toUpperCase();
-                } while (!(chosenArea.length===1 && areaLetters.includes(chosenArea)) && (alert("Enter a single letter A-Z.") || true));
-
-                const existing = collectedData.filter(e => e.areaLetter === chosenArea);
-                const maxPlot = existing.reduce((max, e) => Math.max(max, parseInt(e.plotNumber,10)||0), 0);
-                let nextPlot = maxPlot + 1;
-                const origPlots = [...new Set(parsed.map(e => parseInt(e.plotNumber,10)).filter(n => !isNaN(n)))].sort((a,b)=>a-b);
-                const plotMap = {};
-                origPlots.forEach(op => {
-                    if (maxPlot > 0) { plotMap[op] = Math.min(nextPlot++, MAX_PLOT_NUMBER); }
-                    else plotMap[op] = op;
-                });
-                parsed.forEach(e => {
-                    const op = parseInt(e.plotNumber,10);
-                    if (!isNaN(op) && plotMap[op] !== undefined) e.plotNumber = plotMap[op];
-                    e.areaLetter = chosenArea;
-                });
-                if (!safetyCopy(`Before adding ${file.name}`)) { if (csvFileInput) csvFileInput.value = null; return; }
-                collectedData = collectedData.concat(parsed);
-                renderEntries(); saveSessionData();
-                showProjectFeedback(`Added ${parsed.length} entries to Area ${chosenArea}.${maxPlot>0?' Plots renumbered.':''}`, false, 4000);
-                currentLocation = null;
-                if (locationStatus) locationStatus.textContent = '';
-                if (csvFileInput) csvFileInput.value = null;
+                parsed = parseCsvAndLoadData(text);
             } catch(err) {
+                // Not a TimberTally CSV: match its columns by hand (csv-match.js).
+                if (/header not found/i.test(err.message) && window.TTCsvMatch) {
+                    if (csvFileInput) csvFileInput.value = null;
+                    window.TTCsvMatch.open(text, file.name);
+                    return;
+                }
                 showProjectFeedback(`CSV Error: ${err.message}`, true, 5000);
                 if (csvFileInput) csvFileInput.value = null;
+                return;
             }
+            addImportedEntries(parsed, file.name);
         };
         reader.onerror = () => { showProjectFeedback("File read error.", true); if (csvFileInput) csvFileInput.value=null; };
         reader.readAsText(file);
+    }
+
+    /**
+     * Adds parsed CSV entries to the open project: asks for one Area letter (unless keepAreas is
+     * set and every entry already has one), renumbers plots per Area when that Area already has
+     * data, and keeps a safety copy first.
+     */
+    async function addImportedEntries(parsed, fileName, { keepAreas = false } = {}) {
+        try {
+            if (!parsed.length) { showProjectFeedback("No valid data found in CSV.", true); if (csvFileInput) csvFileInput.value=null; return false; }
+            const lacking = parsed.filter(e => !keepAreas || !areaLetters.includes(e.areaLetter));
+            let chosenArea = null;
+            if (lacking.length) {
+                const msg = keepAreas
+                    ? `Enter Area Letter (A-Z) for the ${lacking.length} entries from "${fileName}" with no Area:`
+                    : `Enter Area Letter (A-Z) for all ${parsed.length} entries from "${fileName}":`;
+                do {
+                    chosenArea = prompt(msg, areaLetters[currentAreaIndex]);
+                    if (chosenArea === null) { showProjectFeedback("CSV load cancelled.", false); if (csvFileInput) csvFileInput.value=null; return false; }
+                    chosenArea = chosenArea.trim().toUpperCase();
+                } while (!(chosenArea.length===1 && areaLetters.includes(chosenArea)) && (alert("Enter a single letter A-Z.") || true));
+            }
+            lacking.forEach(e => { e.areaLetter = chosenArea; });
+
+            let renumbered = false;
+            const letters = [...new Set(parsed.map(e => e.areaLetter))].sort();
+            letters.forEach(letter => {
+                const existing = collectedData.filter(e => e.areaLetter === letter);
+                const maxPlot = existing.reduce((max, e) => Math.max(max, parseInt(e.plotNumber,10)||0), 0);
+                if (maxPlot <= 0) return;
+                renumbered = true;
+                let nextPlot = maxPlot + 1;
+                const rows = parsed.filter(e => e.areaLetter === letter);
+                const origPlots = [...new Set(rows.map(e => parseInt(e.plotNumber,10)).filter(n => !isNaN(n)))].sort((a,b)=>a-b);
+                const plotMap = {};
+                origPlots.forEach(op => { plotMap[op] = Math.min(nextPlot++, MAX_PLOT_NUMBER); });
+                rows.forEach(e => {
+                    const op = parseInt(e.plotNumber,10);
+                    if (!isNaN(op) && plotMap[op] !== undefined) e.plotNumber = plotMap[op];
+                });
+            });
+            if (!(await safetyCopy(`Before adding ${fileName}`))) { if (csvFileInput) csvFileInput.value = null; return false; }
+            collectedData = collectedData.concat(parsed);
+            renderEntries(); saveSessionData();
+            showProjectFeedback(`Added ${parsed.length} entries to Area ${letters.join(', ')}.${renumbered?' Plots renumbered.':''}`, false, 4000);
+            currentLocation = null;
+            if (locationStatus) locationStatus.textContent = '';
+            if (csvFileInput) csvFileInput.value = null;
+            return true;
+        } catch(err) {
+            showProjectFeedback(`CSV Error: ${err.message}`, true, 5000);
+            if (csvFileInput) csvFileInput.value = null;
+            return false;
+        }
     }
 
     if (loadCsvBtn) loadCsvBtn.addEventListener('click', () => {
@@ -1880,6 +2077,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (treeKeyModal) treeKeyModal.addEventListener('click', e => { if (e.target === treeKeyModal) closeKeyModal(); });
 
     // Tab buttons
+    // Species management has no tab: "edit species" on the Data tab opens it, Done returns.
+    document.getElementById('editSpeciesLink')?.addEventListener('click', () => { switchTab('species'); window.scrollTo(0, 0); });
+    document.getElementById('speciesDoneBtn')?.addEventListener('click', () => switchTab('takeData'));
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
@@ -1973,12 +2174,13 @@ document.addEventListener('DOMContentLoaded', () => {
         flushNotes();
         notesArea = letter;
         if (areaNotesSelect) {
-            areaNotesSelect.innerHTML = areaNotesOptions().map(a => `<option value="${a}">Area ${a}${areaNotesOf(a).trim() || hasRegen(regenOf(a)) ? ' ✎' : ''}</option>`).join('');
+            areaNotesSelect.innerHTML = areaNotesOptions().map(a => `<option value="${escHtml(a)}">Area ${escHtml(a)}${areaNotesOf(a).trim() || hasRegen(regenOf(a)) ? ' ✎' : ''}</option>`).join('');
             areaNotesSelect.value = letter;
         }
         if (areaNotesTextarea) areaNotesTextarea.value = areaNotesOf(letter);
         if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = '';
         renderRegen();
+        window.dispatchEvent(new CustomEvent('tt-area-notes-shown', { detail: letter }));
     }
     function openAreaNotes() {
         if (!areaNotesModal) return;
@@ -2030,11 +2232,13 @@ document.addEventListener('DOMContentLoaded', () => {
         notesSaveTimeout = setTimeout(() => { notesDirty = false; saveAreaNotes(); }, 600);
         if (areaNotesSavedStatus) areaNotesSavedStatus.textContent = '';
     });
-    document.getElementById('areaNotesClearBtn')?.addEventListener('click', () => {
+    document.getElementById('areaNotesClearBtn')?.addEventListener('click', async () => {
         if (!notesArea || (!areaNotesTextarea?.value.trim() && !hasRegen(regenOf(notesArea)))) return;
         if (!confirm(`Clear the notes and regeneration for Area ${notesArea}? A safety copy is kept for 7 days.`)) return;
         flushNotes();
-        if (!safetyCopy(`Area ${notesArea} notes cleared`)) return;
+        const area = notesArea;
+        if (!(await safetyCopy(`Area ${area} notes cleared`))) return;
+        if (notesArea !== area) return;
         areaNotesTextarea.value = '';
         saveAreaNotes();
         saveRegen(notesArea, blankRegen());
@@ -2057,7 +2261,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return nums.map(n => {
             const trees = entries.filter(e => parseInt(e.plotNumber, 10) === n && !isEmptyPlot(e));
             const all = entries.filter(e => parseInt(e.plotNumber, 10) === n);
-            const ba = trees.filter(e => parseFloat(e.dbh) > 0).length * currentBaf;
+            const ba = trees.filter(e => parseFloat(e.dbh) > 0).reduce((sum, e) => sum + treeBaPerAcre(e.dbh, cruiseSpec()), 0);
             return { number: n, trees: trees.length, ba, hasGps: all.some(e => e.location?.lat != null) };
         });
     }
@@ -2067,10 +2271,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!table || !plotsAreaSelect) return;
         const areas = [...new Set([...window.ttGetDataAreas(), areaLetters[currentAreaIndex]])].sort();
         if (!areas.includes(plotsArea)) plotsArea = areaLetters[currentAreaIndex];
-        plotsAreaSelect.innerHTML = areas.map(a => `<option value="${a}">Area ${a}</option>`).join('');
+        plotsAreaSelect.innerHTML = areas.map(a => `<option value="${escHtml(a)}">Area ${escHtml(a)}</option>`).join('');
         plotsAreaSelect.value = plotsArea;
         const rows = plotRows(plotsArea);
-        if (!rows.length) { table.innerHTML = `<tbody><tr><td class="no-entries-msg">No plots in Area ${plotsArea} yet.</td></tr></tbody>`; return; }
+        if (!rows.length) { table.innerHTML = `<tbody><tr><td class="no-entries-msg">No plots in Area ${escHtml(plotsArea)} yet.</td></tr></tbody>`; return; }
         const cur = areaLetters[currentAreaIndex];
         table.innerHTML = '<thead><tr><th>Plot</th><th>Trees</th><th>BA/Ac</th><th>GPS</th><th></th></tr></thead><tbody>'
             + rows.map(r => {
@@ -2136,19 +2340,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const count = treesIn(letter, n);
         $id('movePlotTitle').textContent = `Move Plot ${n}`;
         $id('movePlotInfo').textContent = `Area ${letter}, Plot ${n} — ${count ? plural(count, 'tree') : 'empty plot'}. Its trees and GPS points move with it.`;
-        $id('movePlotArea').innerHTML = areaLetters.map(a => `<option value="${a}">${a}</option>`).join('');
+        $id('movePlotArea').innerHTML = areaLetters.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
         $id('movePlotArea').value = letter;
         $id('movePlotNumber').value = n;
         updateMoveWarning();
         movePlotModal.style.display = 'flex';
         setTimeout(() => $id('movePlotNumber').select(), 50);
     }
-    function doMovePlot() {
+    async function doMovePlot() {
         if (!movingPlot) return;
         const from = movingPlot;
         const to = $id('movePlotArea').value, n = parseInt($id('movePlotNumber').value, 10);
         if (!(n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) || (to === from.area && n === from.plot)) return;
-        if (!safetyCopy(`Before moving Area ${from.area} Plot ${from.plot} to Area ${to} Plot ${n}`)) return;
+        if (!(await safetyCopy(`Before moving Area ${from.area} Plot ${from.plot} to Area ${to} Plot ${n}`))) return;
+        if (movingPlot !== from) return;
         const combined = treesIn(to, n) > 0;
         const inFrom = e => e.areaLetter === from.area && parseInt(e.plotNumber, 10) === from.plot;
         collectedData.forEach(e => { if (inFrom(e)) { e.areaLetter = to; e.plotNumber = n; } });
@@ -2201,8 +2406,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Screen lock, app switch or close: save anything still pending.
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushNotes(); saveSessionData(); } });
-    window.addEventListener('pagehide', () => { flushNotes(); saveSessionData(); });
+    // Leaving the app (screen off, app switch): save anything pending, without marking the
+    // project changed, so the backup reminder and project order only follow real edits.
+    const HIDE_SAVE = { touch: false, ifChanged: true };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushNotes(); saveSessionData(HIDE_SAVE); } });
+    window.addEventListener('pagehide', () => { flushNotes(); saveSessionData(HIDE_SAVE); });
 
     // Recommendation Builder keeps its per-area lists in the open project.
     window.ttGetProjectRecs = () => (currentProject ? (currentProject.recs ||= {}) : {});
@@ -2211,7 +2419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // ============================================================
     // INSTALL PROMPT (PWA)
     // ============================================================
-    // The Install App button in Settings is always there. With Chrome's install offer in hand it
+    // The Install App button in the ☰ Menu is always there. With Chrome's install offer in hand it
     // installs in one tap; otherwise it shows the steps for this phone or computer.
     const isInstalled = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
     function showInstallUI(show) {
@@ -2243,7 +2451,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isInstalled()) return { title: 'TimberTally is installed', html: '<p>You are using the installed app. To reinstall, remove its icon first, then open the website and tap Install App again.</p>' };
         if (ios && !safariIOS) return { title: 'Open in Safari to install', html: '<p>On iPhone and iPad, apps are added from <b>Safari</b>.</p>' + li(['Copy this page\'s address and open it in <b>Safari</b>.', 'Tap the <b>Share</b> button (square with an arrow).', 'Tap <b>Add to Home Screen</b>, then <b>Add</b>.']) };
         if (ios) return { title: 'Install on iPhone / iPad', html: li(['Tap the <b>Share</b> button (square with an arrow) at the bottom of Safari.', 'Scroll down and tap <b>Add to Home Screen</b>.', 'Tap <b>Add</b>. TimberTally appears on your home screen.']) };
-        if (android && firefox) return { title: 'Use Chrome to install', html: '<p>Firefox adds a shortcut with a Firefox badge instead of installing the app.</p>' + li(['Open this page in <b>Chrome</b>.', 'Tap <b>Install App</b> in Settings again, or Chrome\'s <b>⋮</b> menu → <b>Install app</b>.']) };
+        if (android && firefox) return { title: 'Use Chrome to install', html: '<p>Firefox adds a shortcut with a Firefox badge instead of installing the app.</p>' + li(['Open this page in <b>Chrome</b>.', 'Tap ☰ → <b>Install App</b> again, or Chrome\'s <b>⋮</b> menu → <b>Install app</b>.']) };
         if (android && samsung) return { title: 'Install on Android (Samsung Internet)', html: li(['Tap the <b>☰</b> menu at the bottom.', 'Tap <b>Add page to</b> → <b>Home screen</b>.', 'Tap <b>Add</b>.']) };
         if (android) return { title: 'Install on Android', html: li(['Tap Chrome\'s <b>⋮</b> menu (top right).', 'Tap <b>Install app</b>. If you only see <b>Add to Home screen</b>, close the tab, reopen the site, wait a few seconds and look again — "Add to Home screen" makes a shortcut with a Chrome badge.', 'Tap <b>Install</b>.']) };
         if (firefox) return { title: 'Use Chrome or Edge to install', html: '<p>Firefox on computers cannot install web apps. Open this page in <b>Chrome</b> or <b>Edge</b> and tap Install App again.</p>' };
@@ -2272,7 +2480,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (installAcceptBtn) installAcceptBtn.addEventListener('click', triggerInstall);
     if (installAppBtn) {
         installAppBtn.addEventListener('click', triggerInstall);
-        if (isInstalled()) installAppBtn.innerHTML = '&#10003; App Installed';
+        if (isInstalled()) { const l = installAppBtn.querySelector('span:last-child'); if (l) l.textContent = 'App Installed'; else installAppBtn.textContent = '✓ App Installed'; }
     }
     if (installDismissBtn) installDismissBtn.addEventListener('click', () => {
         showInstallUI(false);
@@ -2287,7 +2495,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // INITIALIZATION
     // ============================================================
     function initializeApp() {
-        console.log("TimberTally v7 initializing...");
+        console.log("TimberTally 3 initializing...");
         try {
             const updateEl = document.getElementById('updateNotification');
             if (updateEl) updateEl.style.display = 'none';
@@ -2302,14 +2510,40 @@ document.addEventListener('DOMContentLoaded', () => {
             openProject(startProject, { quiet: true });
             renderSaveState(Store.getSaveState());
             updateSaveBtnLabel();
-            console.log("TimberTally v7 initialized.");
+            console.log("TimberTally 3 initialized.");
         } catch(err) {
             console.error("INIT ERROR:", err);
             if (document.body) {
-                document.body.innerHTML = `<div style="padding:20px;color:red;"><h2>App Init Failed</h2><p>${err.message}</p>Check console.</div>`;
+                document.body.innerHTML = `<div style="padding:20px;color:red;"><h2>App Init Failed</h2><p>${escHtml(err?.message)}</p>Check console.</div>`;
             }
         }
     }
+
+    // Bridge for the add-on files (tour.js, csv-match.js, plot-export.js).
+    window.TTApp = {
+        project: () => currentProject,
+        data: () => collectedData,
+        areaLetters,
+        currentArea: () => areaLetters[currentAreaIndex],
+        settings: () => ({ baf: currentBaf, logRule: currentLogRule, formClass: currentFormClass, cruise: typeof cruiseSpec === 'function' ? cruiseSpec() : currentBaf }),
+        speciesList: () => currentSpeciesList.slice(),
+        /** Saves the open project, then adds and opens a new one. */
+        openNewProject(p) {
+            saveSessionData();
+            if (!Store.saveProject(p)) { showProjectFeedback('Could not create the project — device storage is full.', true, 5000); return false; }
+            openProject(p, { quiet: true });
+            return true;
+        },
+        addImported: (parsed, fileName, opts) => addImportedEntries(parsed, fileName, opts),
+        /** The tree rows of an Area CSV, and the Import CSV reader (round-trip tests). */
+        entriesCsv: data => entriesCsv(data),
+        parseCsv: text => parseCsvAndLoadData(text),
+        switchTab: id => switchTab(id),
+        /** Opens the Edit Entry box for one entry (used by check-data.js). */
+        editEntry: id => openEditEntry(id),
+        tallyArea: () => tallyAreaSelect?.value || 'ALL',
+        projectFeedback: (m, e, d) => showProjectFeedback(m, e, d),
+    };
 
     initializeApp();
 
