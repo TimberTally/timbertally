@@ -154,12 +154,12 @@ test('Enough plots line expands and collapses', async ({ page }) => {
 test('Check Data finds an injected duplicate', async ({ page }) => {
     await openApp(page);
     await loadSample(page);
-    // Two identical trees saved 5 s apart (ids are save times).
+    // Two identical trees saved 2 s apart (ids are save times).
     await page.evaluate(() => {
         const p = window.TTApp.project();
         const t = Date.now();
         const tree = { plotNumber: 3, areaLetter: 'A', species: 'Sassafras', dbh: '12', logs: '1', cutStatus: 'No', ugsStatus: 'No', notes: '', location: null };
-        p.data.push({ ...tree, id: t }, { ...tree, id: t + 5000 });
+        p.data.push({ ...tree, id: t }, { ...tree, id: t + 2000 });
         window.TTStore.saveProject(p);
         window.TTApp.openNewProject(p);
     });

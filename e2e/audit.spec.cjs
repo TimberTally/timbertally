@@ -169,10 +169,10 @@ test('logs choices follow the volume table for the DBH, and the selection is cla
         out.cullKept = e.getLogs();
         return out;
     });
-    expect(r[12]).toEqual(['1', '1.5', '2', '2.5', '3', '3.5', '4', 'Cull']);
-    expect(r[16]).toEqual(['1', '1.5', '2', '2.5', '3', '3.5', '4', 'Cull']);
-    expect(r[20]).toEqual(['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', 'Cull']);
-    expect(r[30]).toEqual(['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', 'Cull']);
+    expect(r[12]).toEqual(['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', 'Cull']);
+    expect(r[16]).toEqual(['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', 'Cull']);
+    expect(r[20]).toEqual(['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', 'Cull']);
+    expect(r[30]).toEqual(['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', 'Cull']);
     expect(r[8]).toEqual(['0']);
     expect(r.clamped16).toBe('4');
     expect(r.cullKept).toBe('Cull');
@@ -184,7 +184,7 @@ test('logs choices follow the volume table for the DBH, and the selection is cla
         window.ttEntry.setDbh('16');
     });
     await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('#tapGridPanel [data-logs]')].map(b => b.dataset.logs)))
-        .toEqual(['1', '1.5', '2', '2.5', '3', '3.5', '4', 'Cull']);
+        .toEqual(['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', 'Cull']);
 });
 
 test('leaving the app (pagehide / screen off) does not mark the project changed', async ({ page }) => {

@@ -1,5 +1,5 @@
 // --- START OF FILE twig-key.js ---
-// Winter twig ID key (from ForestScribe) and a Leaf / Twig switch at the top of the Tree ID Key
+// Winter twig ID key (from ForestScribe) and a Leaf / Twig switch at the top of the Leaf/Twig ID key (☰ Menu → Leaf/Twig ID)
 // window. Leaf-off months (November–March) open on the twig key.
 (function () {
     "use strict";

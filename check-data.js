@@ -7,8 +7,8 @@
 (function () {
     'use strict';
 
-    /** Seconds between two identical entries that look like a double tap (ForestScribe). */
-    const DUPLICATE_SECONDS = 20;
+    /** Seconds between two identical entries that look like a double tap. */
+    const DUPLICATE_SECONDS = 3;
     /** Entries saved less than this apart came in together (CSV import, sample), not a double tap. */
     const MIN_TAP_GAP_MS = 300;
     /** Trees this size and under carry no saw logs (ForestScribe MAX_ZERO_LOG_DBH). */

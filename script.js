@@ -1810,7 +1810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('settingsDoneBtn')?.addEventListener('click', closeSettings);
     settingsSection?.addEventListener('click', e => { if (e.target === settingsSection) closeSettings(); });
     document.addEventListener('keydown', e => {
-        // Esc closes the sheet unless a dialog opened from it (Tree ID Key, ⓘ) is on top.
+        // Esc closes the sheet unless a dialog opened from it (Leaf/Twig ID, ⓘ) is on top.
         if (e.key !== 'Escape' || !settingsSection || settingsSection.hidden) return;
         if (treeKeyModal && treeKeyModal.style.display === 'flex') return;
         if (document.querySelector('.tt-tour-overlay')) return;
@@ -2400,7 +2400,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (movePlotModal?.style.display === 'flex') { movePlotModal.style.display = 'none'; movingPlot = null; }
+        if (treeKeyModal?.style.display === 'flex') closeKeyModal();
+        else if (movePlotModal?.style.display === 'flex') { movePlotModal.style.display = 'none'; movingPlot = null; }
         else if (plotsModal?.style.display === 'flex') closePlots();
         else if (areaNotesModal?.style.display === 'flex') closeAreaNotes();
     });

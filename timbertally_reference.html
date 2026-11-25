@@ -306,6 +306,7 @@
         <li>Parse <code>dbhStr</code> to integer. Return 0 if DBH &lt; 10 or invalid.</li>
         <li>Return 0 if <code>logsStr</code> = "Cull", logs ≤ 0, or invalid.</li>
         <li>Round logs down to nearest 0.5 to get the table lookup key.</li>
+        <li>Half log (0.5): the tables start at 1 log, so a half log is exactly half the 1-log volume for that DBH, log rule and form class (e.g. Doyle 12&Prime; = 29 &divide; 2 = 14.5 BF).</li>
         <li>Look up base volume in the selected rule's FC78 table.</li>
         <li>If Doyle and FC ≠ 78: <code>adjusted = round(baseVol × (FC ÷ 78))</code>. Scribner and International use base volume directly.</li>
         <li>Return volume ≥ 0.</li>

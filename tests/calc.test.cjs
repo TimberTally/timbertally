@@ -242,12 +242,12 @@ test('every DBH × logs choice the Data tab offers has a volume > 0 in all three
         }
     }
     assert.ok(n > 300);
-    // The table limits: 4 logs at 12-18", 5 at 20-26", 6 at 28"+, and no half log.
+    // The table limits: 4 logs at 12-18", 5 at 20-26", 6 at 28"+, from a half log up.
     assert.equal(env.ev('maxLogsFor("12")'), 4);
     assert.equal(env.ev('maxLogsFor("18")'), 4);
     assert.equal(env.ev('maxLogsFor("20")'), 5);
     assert.equal(env.ev('maxLogsFor("28")'), 6);
-    assert.ok(!offered(16).includes('0.5'));
+    assert.ok(offered(16).includes('0.5'));
     assert.ok(!offered(16).includes('4.5'));
 });
 
@@ -264,4 +264,27 @@ test('csvCell: quotes doubled, formula starts guarded, plain text quoted', () =>
     assert.equal(c(null), '""');
     const r = env.ev('formatReportForCsv(calculateForestryReport([{plotNumber:1,areaLetter:"A",species:"Oak \\"big\\"",dbh:"16",logs:"2",cutStatus:"No"}], 10, "Doyle", 78))');
     assert.ok(r.includes('"Oak ""big"""'), 'species quoted in the report CSV');
+});
+
+// A half log is half of a 1-log tree of the same DBH, in every rule and form class.
+test('half log = half the 1-log volume, and every table value is returned as listed', () => {
+    const tables = { Doyle: 'DOYLE_FC78_VOLUMES', Scribner: 'SCRIBNER_FC78_VOLUMES', International: 'INTERNATIONAL_FC78_VOLUMES' };
+    let n = 0;
+    for (const [rule, name] of Object.entries(tables)) {
+        const t = env.evj(name);
+        for (const d of Object.keys(t)) {
+            const keys = Object.keys(t[d]).map(Number).sort((a, b) => a - b);
+            for (let i = 1; i < keys.length; i++) assert.ok(t[d][keys[i].toFixed(1)] > t[d][keys[i - 1].toFixed(1)], `${rule} ${d}" rises with logs`);
+            if (t[d - 1]) for (const k of Object.keys(t[d])) if (t[d - 1][k] != null) assert.ok(t[d][k] > t[d - 1][k], `${rule} ${k} logs rises with DBH at ${d}"`);
+            for (const fc of rule === 'Doyle' ? [70, 72, 74, 76, 78, 80, 82, 84, 86] : [78]) {
+                const scale = v => (rule === 'Doyle' && fc !== 78 ? Math.round(v * fc / 78) : v);
+                for (const k of keys) { assert.equal(vol(d, String(k), rule, fc), scale(t[d][k.toFixed(1)]), `${rule} FC${fc} ${d}" ${k}`); n++; }
+                assert.equal(vol(d, '0.5', rule, fc), vol(d, '1', rule, fc) / 2, `${rule} FC${fc} ${d}" half log`);
+                n++;
+            }
+        }
+    }
+    assert.ok(n > 3000);
+    assert.equal(vol('12', '0.5', 'Doyle'), 14.5);
+    assert.equal(vol('20', '0.5', 'Doyle'), 67.5);
 });

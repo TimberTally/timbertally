@@ -66,6 +66,7 @@
             <!-- ☰ Menu (menu.js) -->
             <div id="appMenu" class="app-menu" role="menu" aria-label="Menu" hidden>
                 <button type="button" role="menuitem" id="menuSettingsBtn" class="app-menu-item"><span class="app-menu-icon">&#9881;</span><span>Settings</span></button>
+                <button type="button" role="menuitem" id="showTreeKeyBtn" class="app-menu-item"><span class="app-menu-icon">&#127807;</span><span>Leaf/Twig ID</span></button>
                 <button type="button" role="menuitem" id="menuHelpBtn" class="app-menu-item"><span class="app-menu-icon">?</span><span>Help &amp; Tours</span></button>
                 <a role="menuitem" id="menuQuickStart" class="app-menu-item" href="./TimberTally-Quick-Start.pdf" target="_blank" rel="noopener"><span class="app-menu-icon">&#128196;</span><span>Quick Start sheet</span></a>
                 <button type="button" role="menuitem" id="menuWordingBtn" class="app-menu-item"><span class="app-menu-icon">&#9998;</span><span>Standard Wording</span></button>
@@ -142,9 +143,6 @@
                     </div>
                 </div>
                 <p class="settings-note">&#128190; <b>Save ZIP</b> puts everything in one file: a CSV, Stand &amp; Stock table, Summary Report and Graphs page (11&times;8.5&Prime; landscape) for each Area, a Property Summary when there are 2 or more Areas, the stocking chart for all Areas, and Area notes. The cruise method (BAF or fixed plot), Log Rule and Form Class above are used for all of it.</p>
-                <div class="settings-actions">
-                    <button type="button" id="showTreeKeyBtn" class="control-button btn-success">&#127807; Tree ID Key</button>
-                </div>
                 <div id="settingsFeedback" class="feedback-message" style="margin-top:8px;"></div>
             </div>
         </div>
@@ -495,7 +493,7 @@
     </div>
 
     <!-- Tree Key Modal -->
-    <div id="treeKeyModal" class="modal-overlay" style="display:none;" role="dialog" aria-label="Tree ID Key">
+    <div id="treeKeyModal" class="modal-overlay" style="display:none;" role="dialog" aria-label="Leaf/Twig ID">
         <div class="modal-content">
             <button id="closeTreeKeyBtn" class="modal-close-btn" title="Close Key">&#215;</button>
             <h2>Simplified Tree ID Key (Eastern US Deciduous)</h2>

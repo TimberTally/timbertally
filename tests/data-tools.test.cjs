@@ -24,12 +24,12 @@ test('Check Data: an empty plot is not a gap, and is reported as info', () => {
     assert.ok(out.some(i => i.level === 'info' && /recorded with no trees: 2/.test(i.text)));
 });
 
-test('Check Data: same tree twice within 20 s is a possible duplicate; 30 s apart is not', () => {
-    const dup = check([tr(T0, 1, 16, 2), tr(T0 + 5000, 1, 16, 2)]);
+test('Check Data: same tree twice within 3 s is a possible duplicate; 5 s apart is not', () => {
+    const dup = check([tr(T0, 1, 16, 2), tr(T0 + 2000, 1, 16, 2)]);
     const d = dup.find(i => /Possible duplicate/.test(i.text));
     assert.ok(d, JSON.stringify(dup));
-    assert.equal(d.id, T0 + 5000);
-    const ok = check([tr(T0, 1, 16, 2), tr(T0 + 30000, 1, 16, 2)]);
+    assert.equal(d.id, T0 + 2000);
+    const ok = check([tr(T0, 1, 16, 2), tr(T0 + 5000, 1, 16, 2)]);
     assert.ok(!ok.some(i => /duplicate/i.test(i.text)));
     // Saved together (CSV import, sample): under 300 ms apart is not a double tap.
     const batch = check([tr(T0, 1, 16, 2), tr(T0 + 1, 1, 16, 2)]);
@@ -128,7 +128,7 @@ test('Check Data: logs beyond the table are flagged for every log rule', () => {
         env.ctx.__e = [tr(T0, 1, 12, 6), tr(T0 + 60000, 1, 16, 4.5), tr(T0 + 120000, 1, 20, 6), tr(T0 + 180000, 2, 16, 2), tr(T0 + 240000, 2, 18, 0.5)];
         const out = JSON.parse(env.ev(`JSON.stringify(TTCheckData.checkArea(__e, ${JSON.stringify(rule)}, 78))`));
         const hits = out.filter(i => new RegExp(`beyond the ${rule} volume table`).test(i.text));
-        assert.equal(hits.length, 4, `${rule}: ${JSON.stringify(out)}`); // 12"x6, 16"x4.5, 20"x6, 18"x0.5 (16"x2 is fine)
+        assert.equal(hits.length, 3, `${rule}: ${JSON.stringify(out)}`); // 12"x6, 16"x4.5, 20"x6 (16"x2 and 18"x0.5, a half log, are fine)
     }
 });
 

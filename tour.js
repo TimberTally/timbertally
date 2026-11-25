@@ -27,7 +27,7 @@
         { target: '.tab-nav', title: 'Tabs at the bottom', text: 'Projects: switch, back up, import a CSV, export plot locations. Tally: trees, basal area and volume per acre and the stocking chart. Recs: write the recommendations for each Area.' },
         { target: '#saveCsvBtn', title: 'Save ZIP', text: 'One file with everything for the open project: a CSV, Summary Report and Graphs page for each Area, the stocking chart and Area notes.' },
         { target: '#helpBtn', title: 'Help & Tours', text: 'A tour of whichever tab is open, the other tours, the printable Quick Start sheet and Report a Problem.' },
-        { target: '#menuBtn', title: 'Menu', text: 'Settings (BAF or fixed plot, log rule, form class, dark mode, Tree ID Key), Standard Wording, Install App, Check for Updates and Info / Contact.' },
+        { target: '#menuBtn', title: 'Menu', text: 'Settings (BAF or fixed plot, log rule, form class, dark mode), Leaf/Twig ID, Standard Wording, Install App, Check for Updates and Info / Contact.' },
     ];
 
     const TOURS = {
@@ -77,7 +77,6 @@
                 { target: '#formClassGroup', title: 'Form class', text: 'For the Doyle rule only.' },
                 { target: '#entryModeSelect', title: 'Collection', text: 'Scroll Wheel, or Tap Grid: tap a DBH, then logs, and the tree is saved.' },
                 { target: '#darkModeSelect', title: 'Dark mode', text: 'Off, On, or follow the phone (System).' },
-                { target: '#showTreeKeyBtn', title: 'Tree ID Key', text: 'A simple leaf key and a winter twig key.' },
                 { target: '#settingsDoneBtn', title: 'Done', text: 'Settings save as you change them. Done goes back to where you were.' },
             ],
         },

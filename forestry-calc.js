@@ -20,6 +20,8 @@ function getTreeVolume(dbhStr, logsStr, logRule, formClass = 78) {
         if (isNaN(logsNum) || logsNum <= 0) return 0;
         const logsKey = (Math.floor(logsNum * 2) / 2).toFixed(1);
         if (parseFloat(logsKey) <= 0) return 0;
+        // A half log is exactly half of a 1-log tree of the same DBH (form class included).
+        if (logsKey === '0.5') return getTreeVolume(dbhStr, '1', logRule, formClass) / 2;
         const tables = {
             Doyle: DOYLE_FC78_VOLUMES,
             Scribner: SCRIBNER_FC78_VOLUMES,
@@ -27,9 +29,7 @@ function getTreeVolume(dbhStr, logsStr, logRule, formClass = 78) {
         };
         const table = tables[logRule];
         if (!table) return 0;
-        const dbhEntry = table[String(dbhInt)];
-        if (!dbhEntry || !Object.prototype.hasOwnProperty.call(dbhEntry, logsKey)) return 0;
-        const baseVol = dbhEntry[logsKey];
+        const baseVol = tableVolume(table, dbhInt, logsKey);
         if (!baseVol || baseVol <= 0) return 0;
         if (logRule === 'Doyle') {
             let fc = parseInt(formClass, 10);
@@ -38,6 +38,17 @@ function getTreeVolume(dbhStr, logsStr, logRule, formClass = 78) {
         }
         return baseVol;
     } catch (e) { return 0; }
+}
+
+/**
+ * Form Class 78 table volume for a DBH and a log key ('1.0', '1.5' …). A half log ('0.5')
+ * is half the 1-log volume, since the tables start at 1 log. 0 when the table has no value.
+ */
+function tableVolume(table, dbh, logsKey) {
+    const row = table && table[String(parseInt(dbh, 10))];
+    if (!row) return 0;
+    if (logsKey === '0.5') return (row['1.0'] || 0) / 2;
+    return Object.prototype.hasOwnProperty.call(row, logsKey) ? row[logsKey] : 0;
 }
 
 /** Log counts the Data tab offers above 10" (the wheel and Tap Grid), before limiting by DBH. */
@@ -49,7 +60,7 @@ const LOG_COUNT_CHOICES = ['0.5','1','1.5','2','2.5','3','3.5','4','4.5','5','5.
 function logsChoicesFor(dbh) {
     const d = String(parseInt(dbh, 10));
     const tables = [DOYLE_FC78_VOLUMES, SCRIBNER_FC78_VOLUMES, INTERNATIONAL_FC78_VOLUMES];
-    return LOG_COUNT_CHOICES.filter(v => tables.every(t => (t[d]?.[parseFloat(v).toFixed(1)] || 0) > 0));
+    return LOG_COUNT_CHOICES.filter(v => tables.every(t => tableVolume(t, d, parseFloat(v).toFixed(1)) > 0));
 }
 /** The largest log count the volume tables hold for this DBH (0 when none). */
 function maxLogsFor(dbh) {
