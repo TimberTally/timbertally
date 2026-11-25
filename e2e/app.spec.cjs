@@ -33,6 +33,17 @@ async function pickWheel(page, wheelId, value) {
     await expect.poll(() => page.locator(`#${wheelId === 'dbhWheel' ? 'dbhSelect' : 'logsSelect'}`).inputValue()).toBe(value);
 }
 
+test('an added species survives localStorage being cleared (IndexedDB copy)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => window.TTStore.writeJSON(window.TTStore.K.species, [...window.TTApp.speciesList(), 'Test Cherry']));
+    await flushed(page);
+    await page.evaluate(() => localStorage.removeItem('tt3.species'));
+    await page.reload();
+    await waitReady(page);
+    expect(await page.evaluate(() => window.TTApp.speciesList())).toContain('Test Cherry');
+    expect(await page.evaluate(() => localStorage.getItem('tt3.species'))).toContain('Test Cherry');
+});
+
 test('add a tree with the wheels; it survives a reload (IndexedDB)', async ({ page }) => {
     await openApp(page);
     await page.locator('#speciesQuick button', { hasText: 'White Oak' }).first().click();

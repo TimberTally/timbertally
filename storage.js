@@ -76,6 +76,31 @@
     const cache = new Map();       // key -> JSON text (IndexedDB mode only)
     let pendingWrites = 0;
     const inIdb = key => !!db && key.startsWith('tt3.') && !LOCAL_ONLY.has(key);
+    // User-entered device data kept in localStorage (species list, settings, plan details, wording)
+    // is also mirrored into IndexedDB. Some phones clear localStorage on their own (an app update,
+    // storage clean-up) while IndexedDB survives; the mirror puts the data back the next time it is read.
+    const MIRRORED = new Set([K.settings, K.species, K.recDetails, K.wording]);
+    const mirrorKey = key => `tt3.mirror.${key}`;
+    function writeMirror(key, text) {
+        if (!db || !MIRRORED.has(key)) return;
+        const mk = mirrorKey(key);
+        cache.set(mk, text);
+        pendingWrites++;
+        idbWrite([[mk, text]]).catch(e => console.error('[Storage] Mirror save failed', key, e)).finally(() => { pendingWrites--; });
+    }
+    /** After IndexedDB opens: fill whichever side is missing (localStorage from the mirror, or the mirror from localStorage). */
+    function syncMirrors() {
+        for (const key of MIRRORED) {
+            let local = null;
+            try { local = localStorage.getItem(key); } catch (e) { /* ignore */ }
+            const copy = cache.get(mirrorKey(key));
+            if (local == null && copy != null) {
+                try { localStorage.setItem(key, copy); console.warn('[Storage] Restored', key, 'from IndexedDB'); } catch (e) { /* ignore */ }
+            } else if (local != null && local !== copy) {
+                writeMirror(key, local);
+            }
+        }
+    }
 
     /** Opens the database at its current version (or creates it), making sure the store exists. */
     function idbOpen(version) {
@@ -152,6 +177,7 @@
             d.onversionchange = () => { try { d.close(); } catch (e) { /* ignore */ } dbClosed = true; };
             backend = 'indexeddb';
             try { localStorage.setItem(IDB_USED_FLAG, '1'); } catch (e2) { /* ignore */ }
+            syncMirrors();
             await recoverFallbackSession();
         } catch (e) {
             console.warn('[Storage] IndexedDB not available, using localStorage:', e?.message || e);
@@ -254,7 +280,8 @@
 
     function readJSON(key, fallback = null) {
         try {
-            const json = inIdb(key) ? cache.get(key) : localStorage.getItem(key);
+            let json = inIdb(key) ? cache.get(key) : localStorage.getItem(key);
+            if (json == null && db && MIRRORED.has(key)) json = cache.get(mirrorKey(key)) ?? null;
             return json == null ? fallback : JSON.parse(json);
         } catch (e) {
             console.error('[Storage] Read error', key, e);
@@ -284,6 +311,7 @@
             }).finally(() => { pendingWrites--; });
             return { sync: true, done };
         }
+        writeMirror(key, text);   // first, so the IndexedDB copy is kept even if localStorage is full
         try {
             localStorage.setItem(key, text);
             if (!db && isFallbackKey(key)) markFallbackDirty();

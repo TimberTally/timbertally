@@ -42,9 +42,10 @@ function calculateStandStockTable(areaData, cruise, logRule, formClass) {
 function formatStandStockCsv(st, title, cruise) {
     const q = s => csvCell(s);
     const r1 = v => (Math.round(v * 10) / 10).toFixed(1), r0 = v => String(Math.round(v));
-    let out = `${q(title)}\n${q(cruiseLabel(cruise))},${st.numPlots} plots\n`;
+    // Section markers match the rest of the Area CSV, which these tables are added to.
+    let out = `\n\n--- ${title} ---\n${q(cruiseLabel(cruise))},${st.numPlots} plots\n`;
     const block = (heading, t, pick, fmt) => {
-        out += `\n${q(heading)}\nSpecies,${st.classes.map(c => `${c}"`).join(',')},Total\n`;
+        out += `\n--- ${heading} ---\nSpecies,${st.classes.map(c => `${c}"`).join(',')},Total\n`;
         for (const sp of st.species) {
             if (!t.rowTot[sp]) continue;
             out += `${q(sp)},${st.classes.map(c => (t.cells[sp]?.[c] ? fmt(t.cells[sp][c][pick]) : '')).join(',')},${fmt(t.rowTot[sp][pick])}\n`;
@@ -52,11 +53,11 @@ function formatStandStockCsv(st, title, cruise) {
         out += `TOTAL,${st.classes.map(c => (t.colTot[c] ? fmt(t.colTot[c][pick]) : '')).join(',')},${fmt(t.total[pick])}\n`;
     };
     const tables = [['', st.all]];
-    if (st.cut) tables.push(['CUT ONLY — ', st.cut]);
+    if (st.cut) tables.push(['CUT ONLY - ', st.cut]);
     for (const [pre, t] of tables) {
-        block(`${pre}STAND TABLE — Trees per acre`, t, 'tpa', r1);
-        block(`${pre}STOCK TABLE — Basal area per acre (sq ft)`, t, 'ba', r1);
-        block(`${pre}STOCK TABLE — Volume per acre (board feet)`, t, 'vol', r0);
+        block(`${pre}STAND TABLE - Trees per acre`, t, 'tpa', r1);
+        block(`${pre}STOCK TABLE - Basal area per acre (sq ft)`, t, 'ba', r1);
+        block(`${pre}STOCK TABLE - Volume per acre (board feet)`, t, 'vol', r0);
     }
     return out;
 }

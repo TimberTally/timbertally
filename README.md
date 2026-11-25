@@ -155,8 +155,7 @@ Tap **💾 Save ZIP** (top right). Everything for the open project goes into one
 
 ```
 ProjectName_TimberTally_YYYYMMDD_HHMM.zip
-  ProjectName_AreaA_DoylFC78_BAF10.csv        one per Area (fixed plots: ..._FIX0.2ac.csv)
-  ProjectName_AreaA_Stand_Stock.csv           one per Area
+  ProjectName_AreaA_DoylFC78_BAF10.csv        one per Area, stand & stock tables at the bottom (fixed plots: ..._FIX0.2ac.csv)
   ProjectName_AreaA_Summary_Report.png        one per Area
   ProjectName_AreaA_Graphs.png                one per Area
   ProjectName_Property_Summary.png            when 2 or more Areas have trees

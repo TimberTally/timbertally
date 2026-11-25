@@ -9,22 +9,31 @@ test('Save ZIP produces the expected files', async ({ page }) => {
     await stubSaveFile(page);
     await page.locator('#saveCsvBtn').click();
     await expect.poll(() => page.evaluate(() => window.__saved.length), { timeout: 20000 }).toBe(1);
-    const { filename, names, csvHead } = await page.evaluate(async () => {
+    const { filename, names, csvHead, csvText, csvBytes } = await page.evaluate(async () => {
         const { blob, filename } = window.__saved[0];
         const zip = await JSZip.loadAsync(blob);
         const names = Object.keys(zip.files).sort();
         const csv = names.find(n => /_AreaA_Doyl.*\.csv$/.test(n));
-        return { filename, names, csvHead: csv ? (await zip.file(csv).async('string')).split('\n')[0] : '' };
+        const bytes = csv ? await zip.file(csv).async('uint8array') : new Uint8Array(0);
+        const csvText = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
+        return { filename, names, csvText, csvBytes: Array.from(bytes.slice(0, 3)), csvHead: csvText.slice(1).split('\n')[0] };
     });
     expect(filename).toMatch(/_TimberTally_.*\.zip$/);
-    // Exactly these files: per Area a data CSV (Doyle FC78, BAF 10), stand & stock CSV, Summary Report and Graphs pages;
+    // Exactly these files: per Area a data CSV (Doyle FC78, BAF 10, stand & stock tables at the bottom), Summary Report and Graphs pages;
     // then the property summary, the stocking chart for all Areas and the Area notes.
     const base = 'Sample_Property__made-up_data_';
     const expected = [];
-    for (const a of ['A', 'B']) expected.push(`${base}_Area${a}_DoylFC78_BAF10.csv`, `${base}_Area${a}_Graphs.png`, `${base}_Area${a}_Stand_Stock.csv`, `${base}_Area${a}_Summary_Report.png`);
+    for (const a of ['A', 'B']) expected.push(`${base}_Area${a}_DoylFC78_BAF10.csv`, `${base}_Area${a}_Graphs.png`, `${base}_Area${a}_Summary_Report.png`);
     expected.push(`${base}_Area_Notes.txt`, `${base}_Property_Summary.png`, `${base}_Stocking_Chart_All_Areas.png`);
     expect(names).toEqual(expected.sort());
     expect(csvHead).toMatch(/Plot/i);
+    // UTF-8 byte-order mark, so Excel does not show "â€”" for dashes and symbols
+    expect(csvBytes).toEqual([0xEF, 0xBB, 0xBF]);
+    // Stand & stock tables are at the bottom of the Area CSV
+    expect(csvText).toContain('--- STAND AND STOCK TABLES - Area A');
+    expect(csvText).toContain('--- STAND TABLE - Trees per acre ---');
+    expect(csvText).toContain('--- STOCK TABLE - Volume per acre (board feet) ---');
+    expect(csvText.indexOf('STAND TABLE')).toBeGreaterThan(csvText.indexOf('TALLY DATA'));
 });
 
 test('Save Backup contains every project and the Standard Wording', async ({ page }) => {

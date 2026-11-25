@@ -22,8 +22,11 @@
     --radius-md:     8px;
     --radius-lg:     12px;
     --tab-height:    46px;
+    /* Space kept under the bottom tabs for the iPhone home bar. The labels may sit a little
+       into the home-bar area (as in most iPhone apps), so the bar takes less of the screen. */
+    --tabs-safe: max(4px, calc(env(safe-area-inset-bottom, 0px) - 18px));
     /* Height of the bottom tab bar, home-bar inset included */
-    --bottom-tabs-h: calc(58px + env(safe-area-inset-bottom, 0px));
+    --bottom-tabs-h: calc(48px + var(--tabs-safe));
 }
 
 * { box-sizing: border-box; }
@@ -281,7 +284,7 @@ body.dark-mode .tt-help-modal, body.dark-mode .tt-wording-modal { color: var(--t
     display: flex;
     justify-content: center;
     background: var(--forest-dark);
-    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    padding: 2px 4px var(--tabs-safe);
     box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
 }
 
@@ -307,7 +310,7 @@ body.dark-mode .tt-help-modal, body.dark-mode .tt-wording-modal { color: var(--t
     white-space: nowrap;
     letter-spacing: 0.2px;
 }
-.tab-btn .tab-icon { width: 22px; height: 22px; }
+.tab-btn .tab-icon { width: 20px; height: 20px; }
 .tab-btn:hover {
     color: rgba(255,255,255,0.9);
     background-color: rgba(255,255,255,0.08);
@@ -1665,7 +1668,7 @@ body.dark-mode .sp-btn.selected { color: #111a0d; }
 .scroll-wheel-item.selected { color: var(--forest-dark); font-size: 1.3em; }
 
 /* Cut / UGS chips and the tool buttons: one slim row */
-.entry-extras { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.entry-extras { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
 .chip-toggle {
     position: relative; display: inline-flex; align-items: center; gap: 5px;
     min-height: 38px; padding: 0 14px; margin: 0;
@@ -1943,10 +1946,13 @@ body.dark-mode .btn-link-small { color: #8fc06a; }
 .chip-toggle { min-height: var(--touch); }
 .tool-btn { width: var(--touch); height: var(--touch); }
 .btn-link-small.edit-species-link { min-height: var(--touch); min-width: var(--touch); padding: 0 6px; margin: -10px -6px -10px 0; }
-.sampling-summary { min-height: var(--touch); padding: 0 0 0 8px; }
+.sampling-summary { min-height: 30px; padding: 0 0 0 8px; }
+/* Area / Plot card: less empty space around the steppers and the "Plots needed" line */
+.counter-row.entry-card { padding-bottom: 2px; row-gap: 0; }
+.counter-row .sampling-panel { margin-top: 0; }
 .tap-grid { grid-template-columns: repeat(auto-fill, minmax(var(--touch), 1fr)); }
 .tap-grid-btn { min-height: var(--touch); min-width: var(--touch); }
-.tab-btn { min-height: 52px; min-width: var(--touch); }
+.tab-btn { min-height: 46px; min-width: var(--touch); gap: 1px; }
 
 /* ✓ Check Data (Tally tab) */
 .check-data-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }

@@ -598,17 +598,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function initializeSpeciesManagement() {
-        try {
-            const json = localStorage.getItem(SPECIES_STORAGE_KEY);
-            if (json) {
-                const stored = JSON.parse(json);
-                currentSpeciesList = Array.isArray(stored) && stored.every(s => typeof s === 'string')
-                    ? stored : [...DEFAULT_SPECIES];
-            } else {
-                currentSpeciesList = [...DEFAULT_SPECIES];
-                saveSpeciesList();
-            }
-        } catch (e) { currentSpeciesList = [...DEFAULT_SPECIES]; }
+        const valid = v => Array.isArray(v) && v.length > 0 && v.every(s => typeof s === 'string');
+        // Store.readJSON also finds the IndexedDB copy if the phone cleared localStorage.
+        const stored = Store.readJSON(SPECIES_STORAGE_KEY, null);
+        if (valid(stored)) {
+            currentSpeciesList = [...stored];
+        } else {
+            // No saved list: start from the TimberTally 2 list if there is one, else the defaults,
+            // plus every species already in the saved projects, so nothing tallied goes missing.
+            let legacy = null;
+            try { legacy = JSON.parse(localStorage.getItem('timberTallyCustomSpecies') || 'null'); } catch (e) { /* ignore */ }
+            const base = valid(legacy) ? legacy : DEFAULT_SPECIES;
+            const used = [];
+            try {
+                for (const m of Store.listProjects()) {
+                    for (const e of (Store.getProject(m.id)?.data || [])) if (typeof e.species === 'string' && e.species.trim()) used.push(e.species.trim());
+                }
+            } catch (e) { /* ignore */ }
+            const seen = new Set();
+            currentSpeciesList = [...base, ...used].filter(sp => { const k = sp.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+            saveSpeciesList();
+        }
         populateSpeciesDropdowns();
     }
 
@@ -1252,16 +1262,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else plotCsv += "No plot data.\n";
 
                 const reportCsv = reportData ? (() => { try { return formatReportForCsv(reportData); } catch(e) { return "\n--- FORESTRY REPORT DATA ---\nError formatting report.\n"; } })() : "\n--- FORESTRY REPORT DATA ---\nReport failed.\n";
-                zip.file(`${nameBase}_${ruleP}${fcP}_${cruiseFileTag(selBaf)}.csv`, raw + tallyCsv + plotCsv + reportCsv);
 
-                // Stand & stock tables (property.js)
+                // Stand & stock tables (property.js), added to the bottom of the same CSV
+                let standStockCsv = '';
                 try {
                     if (reportData?.summary?.numberOfPlots > 0) {
                         const acres = currentProject?.areaAcres?.[areaLetter];
                         const st = calculateStandStockTable(areaData, selBaf, selRule, selFc);
-                        if (st.species.length) zip.file(`${nameBase}_Stand_Stock.csv`, formatStandStockCsv(st, `${projName} — Area ${areaLetter}${acres > 0 ? ` — ${acres} acres` : ''} — Stand and Stock Tables`, selBaf));
+                        if (st.species.length) standStockCsv = formatStandStockCsv(st, `STAND AND STOCK TABLES - Area ${areaLetter}${acres > 0 ? ` - ${acres} acres` : ''}`, selBaf);
                     }
                 } catch(e) { console.error('Stand & stock export error:', e); }
+
+                // The byte-order mark tells Excel the file is UTF-8, so accented species names and symbols read correctly.
+                zip.file(`${nameBase}_${ruleP}${fcP}_${cruiseFileTag(selBaf)}.csv`, String.fromCharCode(0xFEFF) + raw + tallyCsv + plotCsv + reportCsv + standStockCsv);
             }
 
             // Property Summary (property.js): 2+ Areas with trees
