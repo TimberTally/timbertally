@@ -15,7 +15,7 @@
         "vars": "all",
         "caughtErrors": "none",
         "args": "none",
-        "varsIgnorePattern": "^(BA_CONST|CHART_COLORS|Chart|DBH_CLASS_LABELS|DBH_CLASS_MAP|DEFAULT_SPECIES|DOYLE_FC78_VOLUMES|FIXED_PLOT_SIZES|GINGRICH_A_PCT|GINGRICH_B_PCT|GINGRICH_DARK|GINGRICH_H|GINGRICH_LIGHT|GINGRICH_W|INTERNATIONAL_FC78_VOLUMES|JSZip|KY_COUNTIES|KY_NRCS_PHONES|LOG_COUNT_CHOICES|REC_LIBRARY|SCRIBNER_FC78_VOLUMES|SHEET_H|SHEET_W|STAND_CHART_EMPTY|STAND_CHART_KEYS|STAND_CHART_SECTION|TTApp|TTCheckData|TTCsvMatch|TTInfo|TTMenu|TTMerge|TTPlotExport|TTRecs|TTSettings|TTStore|TTTour|TTWording|TT_GLOSSARY|TapGrid|VALID_DOYLE_FC|_GA|_GB|_svgEsc|areaAcresOf|buildGingrichCanvas|buildGraphsSheetCanvas|buildPropertySummaryCanvas|buildSummaryReportCanvas|calculateForestryReport|calculatePlotStats|calculatePropertySummary|calculateStandStockTable|calculateStandStocking|combinedPlotStats|comparePlotKeys|createScrollWheel|cruiseCsvTag|cruiseFileTag|cruiseLabel|csvCell|csvUnguard|distByLabel|fixedPlotFraction|fixedPlotRadiusFt|formatReportForCsv|formatStandStockCsv|generateTallyData|getDbhClass|getTreeVolume|gingrichBaAt|gingrichLevel|gingrichPercent|gingrichPoints|isFixedCruise|logsChoicesFor|maxLogsFor|mergeFallbackProjects|plotKey|plotsNeeded|renderGingrichInto|renderGingrichSvg|renderPropertyTableHtml|renderTallyCharts|splitCsvRecords|standChartConfig|standChartOptions|treeBaPerAcre|treeExpansion|ttEntry|ttGetCurrentArea|ttGetDataAreas|ttGetProjectRecs|ttInstallEvent|ttProject|ttSaveProjectRecs|ttTermBtn)$"
+        "varsIgnorePattern": "^(BA_CONST|CHART_COLORS|Chart|DBH_CLASS_LABELS|DBH_CLASS_MAP|DEFAULT_SPECIES|DOYLE_FC78_VOLUMES|FIXED_PLOT_SIZES|GINGRICH_A_PCT|GINGRICH_B_PCT|GINGRICH_DARK|GINGRICH_H|GINGRICH_LIGHT|GINGRICH_W|INTERNATIONAL_FC78_VOLUMES|JSZip|KY_COUNTIES|KY_NRCS_PHONES|LOG_COUNT_CHOICES|REC_LIBRARY|SCRIBNER_FC78_VOLUMES|SHEET_H|SHEET_W|STAND_CHART_EMPTY|STAND_CHART_KEYS|STAND_CHART_SECTION|TTApp|TTCheckData|TTCsvMatch|TTInfo|TTMenu|TTMerge|TTPaperEntry|TTPlotExport|TTRecs|TTSettings|TTStore|TTTour|TTWording|TT_GLOSSARY|TapGrid|VALID_DOYLE_FC|_GA|_GB|_svgEsc|areaAcresOf|buildGingrichCanvas|buildGraphsSheetCanvas|buildPropertySummaryCanvas|buildSummaryReportCanvas|calculateForestryReport|calculatePlotStats|calculatePropertySummary|calculateStandStockTable|calculateStandStocking|combinedPlotStats|comparePlotKeys|createScrollWheel|cruiseCsvTag|cruiseFileTag|cruiseLabel|csvCell|csvUnguard|distByLabel|fixedPlotFraction|fixedPlotRadiusFt|formatReportForCsv|formatStandStockCsv|generateTallyData|getDbhClass|getTreeVolume|gingrichBaAt|gingrichLevel|gingrichPercent|gingrichPoints|isFixedCruise|logsChoicesFor|maxLogsFor|mergeFallbackProjects|plotKey|plotsNeeded|renderGingrichInto|renderGingrichSvg|renderPropertyTableHtml|renderTallyCharts|parseTreeCsv|splitCsvRecords|standChartConfig|standChartOptions|treeBaPerAcre|treeExpansion|ttEntry|ttGetCurrentArea|ttGetDataAreas|ttGetProjectRecs|ttInstallEvent|ttProject|ttSaveProjectRecs|ttTermBtn)$"
       }
     ],
     "no-unreachable": "error",
@@ -120,6 +120,7 @@
     "renderGingrichSvg": "readonly",
     "renderPropertyTableHtml": "readonly",
     "renderTallyCharts": "readonly",
+    "parseTreeCsv": "readonly",
     "splitCsvRecords": "readonly",
     "standChartConfig": "readonly",
     "standChartOptions": "readonly",

@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /** Shows a project: its trees, plot position, notes and recommendations. */
     function openProject(p, { quiet = false } = {}) {
         flushNotes();
-        closeAreaNotes(); closePlots();
+        closeAreaNotes(); window.TTPaperEntry?.dismiss();
         currentProject = p;
         if (!p.areaNotes || typeof p.areaNotes !== 'object') p.areaNotes = {};
         if (!p.areaRegen || typeof p.areaRegen !== 'object') p.areaRegen = {};
@@ -1086,61 +1086,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ============================================================
     // CSV PARSING
     // ============================================================
+    // The reader itself is parseTreeCsv in csv-match.js (pure, unit-tested).
     function parseCsvAndLoadData(csvContent) {
-        // One shared record splitter (csv-match.js): line breaks inside quoted notes stay in the note.
-        const lines = splitCsvRecords(String(csvContent).replace(/^\uFEFF/, ''));
-        let headerIndex = -1, headers = [];
-        for (let i = 0; i < lines.length; i++) {
-            const norm = lines[i].trim().toLowerCase().split(',').map(h => h.trim().replace(/\s/g,''));
-            if (norm.includes('plotnumber') && norm.includes('dbh') && norm.includes('species') && norm.includes('logs') && norm.includes('cut')) {
-                headerIndex = i;
-                headers = lines[i].trim().split(',').map(h => h.trim().toLowerCase());
-                break;
-            }
-        }
-        if (headerIndex === -1) throw new Error("CSV header not found. Requires: PlotNumber, DBH, Species, Logs, Cut");
-        const idx = {
-            p: headers.indexOf('plotnumber'), d: headers.indexOf('dbh'), sp: headers.indexOf('species'),
-            l: headers.indexOf('logs'), c: headers.indexOf('cut'), n: headers.indexOf('notes'),
-            lat: headers.indexOf('latitude'), lon: headers.indexOf('longitude'), ugs: headers.indexOf('ugs')
-        };
-        const parsedData = [];
-        for (let i = headerIndex + 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line || line.startsWith('---') || line.startsWith(',')) continue;
-            const values = []; let cur = '', inQ = false;
-            for (let j = 0; j < line.length; j++) {
-                const c = line[j], nc = line[j+1];
-                if (c==='"' && inQ && nc==='"') { cur+='"'; j++; }
-                else if (c==='"') { inQ=!inQ; }
-                else if (c===',' && !inQ) { values.push(cur.trim()); cur=''; }
-                else cur += c;
-            }
-            values.push(cur.trim());
-            for (const k of [idx.sp, idx.n]) if (k > -1 && values[k] != null) values[k] = csvUnguard(values[k]);
-            if (values.length <= Math.max(idx.p,idx.d,idx.sp,idx.l,idx.c)) continue;
-            try {
-                const plotNum = parseInt(values[idx.p], 10);
-                if (isNaN(plotNum)) continue;
-                const cutStr = (values[idx.c] || 'No').trim();
-                const ugsStr = (idx.ugs > -1 && values[idx.ugs]) ? values[idx.ugs].trim() : 'No';
-                const lat = idx.lat > -1 ? parseFloat(values[idx.lat]) : null;
-                const lon = idx.lon > -1 ? parseFloat(values[idx.lon]) : null;
-                if ((values[idx.sp] || '').trim().toUpperCase() === 'EMPTY PLOT') {
-                    parsedData.push({ id: Date.now() + i, emptyPlot: true, plotNumber: plotNum, dbh: '', species: '', logs: '', cutStatus: 'No', ugsStatus: 'No', notes: '',
-                        location: (lat!==null && lon!==null && !isNaN(lat) && !isNaN(lon)) ? {lat,lon} : null });
-                    continue;
-                }
-                parsedData.push({
-                    id: Date.now() + i, plotNumber: plotNum, dbh: values[idx.d], species: values[idx.sp],
-                    logs: values[idx.l], cutStatus: cutStr.toLowerCase()==='yes'?'Yes':'No',
-                    ugsStatus: ugsStr.toLowerCase()==='yes'?'Yes':'No',
-                    notes: idx.n > -1 ? (values[idx.n]||'') : '',
-                    location: (lat!==null && lon!==null && !isNaN(lat) && !isNaN(lon)) ? {lat,lon} : null
-                });
-            } catch(e) { continue; }
-        }
-        return parsedData;
+        return parseTreeCsv(csvContent);
     }
 
     // ============================================================
@@ -2259,163 +2207,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ============================================================
-    // PLOTS (Data tab → Plots): go to a plot, or move / renumber it (its trees go with it)
+    // PLOTS / DATA (paper-entry.js): go to a plot, and save the screen's changes
     // ============================================================
-    const plotsModal = document.getElementById('plotsModal');
-    const plotsAreaSelect = document.getElementById('plotsAreaSelect');
-    const movePlotModal = document.getElementById('movePlotModal');
-    let plotsArea = null;
-    let movingPlot = null; // { area, plot }
-
-    /** Every plot in an Area with its tree count, BA/acre and GPS. */
-    function plotRows(letter) {
-        const entries = collectedData.filter(e => e.areaLetter === letter);
-        const nums = [...new Set(entries.map(e => parseInt(e.plotNumber, 10)).filter(n => !isNaN(n)))].sort((a, b) => a - b);
-        return nums.map(n => {
-            const trees = entries.filter(e => parseInt(e.plotNumber, 10) === n && !isEmptyPlot(e));
-            const all = entries.filter(e => parseInt(e.plotNumber, 10) === n);
-            const ba = trees.filter(e => parseFloat(e.dbh) > 0).reduce((sum, e) => sum + treeBaPerAcre(e.dbh, cruiseSpec()), 0);
-            return { number: n, trees: trees.length, ba, hasGps: all.some(e => e.location?.lat != null) };
-        });
-    }
-
-    function renderPlots() {
-        const table = document.getElementById('plotsTable');
-        if (!table || !plotsAreaSelect) return;
-        const areas = [...new Set([...window.ttGetDataAreas(), areaLetters[currentAreaIndex]])].sort();
-        if (!areas.includes(plotsArea)) plotsArea = areaLetters[currentAreaIndex];
-        plotsAreaSelect.innerHTML = areas.map(a => `<option value="${escHtml(a)}">Area ${escHtml(a)}</option>`).join('');
-        plotsAreaSelect.value = plotsArea;
-        const rows = plotRows(plotsArea);
-        if (!rows.length) { table.innerHTML = `<tbody><tr><td class="no-entries-msg">No plots in Area ${escHtml(plotsArea)} yet.</td></tr></tbody>`; return; }
-        const cur = areaLetters[currentAreaIndex];
-        table.innerHTML = '<thead><tr><th>Plot</th><th>Trees</th><th>BA/Ac</th><th>GPS</th><th></th></tr></thead><tbody>'
-            + rows.map(r => {
-                const isCur = plotsArea === cur && r.number === currentPlotNumber;
-                return `<tr class="${isCur ? 'plot-current' : ''}">
-                    <td>${r.number}${isCur ? ' <span class="plot-here">◀</span>' : ''}</td>
-                    <td>${r.trees ? r.trees : '<em class="plot-empty">empty</em>'}</td>
-                    <td>${r.ba.toFixed(0)}</td>
-                    <td>${r.hasGps ? '✓' : '—'}</td>
-                    <td class="plot-actions">
-                        <button type="button" class="control-button btn-secondary plot-btn" data-go="${r.number}" ${isCur ? 'disabled' : ''} title="Enter trees in this plot">Go</button>
-                        <button type="button" class="control-button btn-info plot-btn" data-move="${r.number}" title="Renumber or move to another Area">Move</button>
-                        ${r.trees === 0 ? `<button type="button" class="control-button delete-button plot-btn" data-remove="${r.number}" title="Remove this empty plot">&#10005;</button>` : ''}
-                    </td>
-                </tr>`;
-            }).join('') + '</tbody>';
-    }
-    function openPlots() {
-        if (!plotsModal) return;
-        plotsArea = areaLetters[currentAreaIndex];
-        renderPlots();
-        plotsModal.style.display = 'flex';
-    }
-    function closePlots() {
-        if (movePlotModal) movePlotModal.style.display = 'none';
-        if (plotsModal) plotsModal.style.display = 'none';
-        movingPlot = null;
-    }
-
     function goToPlot(letter, n) {
         currentAreaIndex = Math.max(0, areaLetters.indexOf(letter));
         currentPlotNumber = n;
         updatePlotDisplay(); updateAreaDisplay(); calculateAndDisplayNeededPlots();
         saveSessionData();
-        closePlots();
         showFeedback(`Now entering Area ${letter}, Plot ${n}`);
     }
 
-    function removeEmptyPlot(letter, n) {
-        if (!confirm(`Remove empty Plot ${n} (Area ${letter})? It will no longer count in the per-acre averages.`)) return;
-        collectedData = collectedData.filter(e => !(e.areaLetter === letter && parseInt(e.plotNumber, 10) === n && isEmptyPlot(e)));
+    /**
+     * Writes the Plots / Data screen's changes: a safety copy first (as every destructive action),
+     * then the new entry list (untouched entries are the same objects). If the plot being entered
+     * on the field screen was moved, the field screen follows it.
+     */
+    async function savePlotSheet(data, moves, summary) {
+        if (!(await safetyCopy(`Before Plots / Data changes${summary ? ` (${summary})` : ''}`))) return false;
+        collectedData = data;
+        const cur = areaLetters[currentAreaIndex];
+        const mv = (moves || []).find(m => m.from.area === cur && m.from.plot === currentPlotNumber);
+        if (mv) { currentAreaIndex = Math.max(0, areaLetters.indexOf(mv.to.area)); currentPlotNumber = mv.to.plot; }
         renderEntriesKeepingPosition();
-        renderPlots();
-        showFeedback(`Empty Plot ${n} removed.`);
-    }
-
-    const treesIn = (letter, n) => collectedData.filter(e => e.areaLetter === letter && parseInt(e.plotNumber, 10) === n && !isEmptyPlot(e)).length;
-
-    function updateMoveWarning() {
-        if (!movingPlot) return;
-        const to = $id('movePlotArea').value, n = parseInt($id('movePlotNumber').value, 10);
-        const same = to === movingPlot.area && n === movingPlot.plot;
-        const there = n >= 1 && !same ? treesIn(to, n) : 0;
-        const warn = $id('movePlotWarn');
-        warn.hidden = !there;
-        warn.textContent = there ? `Plot ${n} in Area ${to} already has ${plural(there, 'tree')} — the two plots will be combined.` : '';
-        const ok = $id('movePlotOk');
-        ok.textContent = there ? 'Combine' : 'Move';
-        ok.disabled = !(n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) || same;
-    }
-    function openMovePlot(letter, n) {
-        movingPlot = { area: letter, plot: n };
-        const count = treesIn(letter, n);
-        $id('movePlotTitle').textContent = `Move Plot ${n}`;
-        $id('movePlotInfo').textContent = `Area ${letter}, Plot ${n} — ${count ? plural(count, 'tree') : 'empty plot'}. Its trees and GPS points move with it.`;
-        $id('movePlotArea').innerHTML = areaLetters.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
-        $id('movePlotArea').value = letter;
-        $id('movePlotNumber').value = n;
-        updateMoveWarning();
-        movePlotModal.style.display = 'flex';
-        setTimeout(() => $id('movePlotNumber').select(), 50);
-    }
-    async function doMovePlot() {
-        if (!movingPlot) return;
-        const from = movingPlot;
-        const to = $id('movePlotArea').value, n = parseInt($id('movePlotNumber').value, 10);
-        if (!(n >= MIN_PLOT_NUMBER && n <= MAX_PLOT_NUMBER) || (to === from.area && n === from.plot)) return;
-        if (!(await safetyCopy(`Before moving Area ${from.area} Plot ${from.plot} to Area ${to} Plot ${n}`))) return;
-        if (movingPlot !== from) return;
-        const combined = treesIn(to, n) > 0;
-        const inFrom = e => e.areaLetter === from.area && parseInt(e.plotNumber, 10) === from.plot;
-        collectedData.forEach(e => { if (inFrom(e)) { e.areaLetter = to; e.plotNumber = n; } });
-        // One plot now: keep a single empty-plot record only if it has no trees at all.
-        const inTo = e => e.areaLetter === to && parseInt(e.plotNumber, 10) === n;
-        const hasTrees = collectedData.some(e => inTo(e) && !isEmptyPlot(e));
-        let keptEmpty = false;
-        collectedData = collectedData.filter(e => {
-            if (!inTo(e) || !isEmptyPlot(e)) return true;
-            if (hasTrees || keptEmpty) return false;
-            keptEmpty = true; return true;
-        });
-        // Entering trees in the plot that moved: follow it.
-        if (areaLetters[currentAreaIndex] === from.area && currentPlotNumber === from.plot) {
-            currentAreaIndex = areaLetters.indexOf(to);
-            currentPlotNumber = n;
-        }
-        movePlotModal.style.display = 'none';
-        movingPlot = null;
-        renderEntriesKeepingPosition();
-        plotsArea = from.area;
-        renderPlots();
         window.TTRecs?.render();
-        showFeedback(`✓ Plot ${from.plot} ${combined ? 'combined into' : 'moved to'} Area ${to}, Plot ${n}`, false, 3500);
+        return true;
     }
 
-    document.getElementById('plotsBtn')?.addEventListener('click', openPlots);
-    document.getElementById('plotsCloseBtn')?.addEventListener('click', closePlots);
-    plotsModal?.addEventListener('click', e => { if (e.target === plotsModal) closePlots(); });
-    plotsAreaSelect?.addEventListener('change', e => { plotsArea = e.target.value; renderPlots(); });
-    document.getElementById('plotsTable')?.addEventListener('click', e => {
-        const b = e.target.closest('button');
-        if (!b) return;
-        if (b.dataset.go) goToPlot(plotsArea, parseInt(b.dataset.go, 10));
-        else if (b.dataset.move) openMovePlot(plotsArea, parseInt(b.dataset.move, 10));
-        else if (b.dataset.remove) removeEmptyPlot(plotsArea, parseInt(b.dataset.remove, 10));
-    });
-    $id('movePlotArea')?.addEventListener('change', updateMoveWarning);
-    $id('movePlotNumber')?.addEventListener('input', updateMoveWarning);
-    $id('movePlotCancel')?.addEventListener('click', () => { movePlotModal.style.display = 'none'; movingPlot = null; });
-    $id('movePlotOk')?.addEventListener('click', doMovePlot);
-    movePlotModal?.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !$id('movePlotOk').disabled) doMovePlot();
-    });
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
         if (treeKeyModal?.style.display === 'flex') closeKeyModal();
-        else if (movePlotModal?.style.display === 'flex') { movePlotModal.style.display = 'none'; movingPlot = null; }
-        else if (plotsModal?.style.display === 'flex') closePlots();
         else if (areaNotesModal?.style.display === 'flex') closeAreaNotes();
     });
 
@@ -2539,6 +2359,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         data: () => collectedData,
         areaLetters,
         currentArea: () => areaLetters[currentAreaIndex],
+        currentPlot: () => currentPlotNumber,
+        goToPlot: (letter, n) => goToPlot(letter, n),
+        savePlotSheet: (data, moves, summary) => savePlotSheet(data, moves, summary),
+        showFeedback: (m, e, d) => showFeedback(m, e, d),
         settings: () => ({ baf: currentBaf, logRule: currentLogRule, formClass: currentFormClass, cruise: typeof cruiseSpec === 'function' ? cruiseSpec() : currentBaf }),
         speciesList: () => currentSpeciesList.slice(),
         /** Saves the open project, then adds and opens a new one. */

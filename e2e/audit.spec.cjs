@@ -52,10 +52,11 @@ test('hostile strings from CSV import and backup restore never run', async ({ pa
         await tab(page, id);
         await page.waitForTimeout(150);
     }
-    await page.locator('#plotsBtn').click();
+    await page.locator('#plotsDataBtn').click();
+    await expect(page.locator('#plotsDataModal')).toBeVisible();
     await page.waitForTimeout(150);
     await page.keyboard.press('Escape');
-    await page.evaluate(() => document.querySelectorAll('.modal-overlay').forEach(m => { if (m.id === 'plotsModal') m.style.display = 'none'; }));
+    await expect(page.locator('#plotsDataModal')).toHaveCount(0);
     await page.locator('#areaNotesBtn').click();
     await page.waitForTimeout(150);
     await page.evaluate(() => document.querySelectorAll('.modal-overlay').forEach(m => { m.style.display = 'none'; }));

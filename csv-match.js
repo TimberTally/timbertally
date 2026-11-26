@@ -29,6 +29,89 @@ function csvUnguard(v) {
     return /^'[=+\-@\t\r]/.test(s) ? s.slice(1) : s;
 }
 
+/**
+ * Import CSV's reader (called by script.js): the tree rows of a TimberTally CSV (or the blank
+ * Plot Sheet template filled in by hand). Throws "CSV header not found" for any other file.
+ * Paper-sheet shorthand, which never occurs in an app-written CSV (every row has a plot number):
+ *   - a blank PlotNumber = the plot of the row above (only after a row that had one);
+ *   - a cell that is exactly " (Excel writes """") or '' = the same column of the row above;
+ *   - Logs C = cull; Cut / UGS Y, X, C, 1, Cut = yes;
+ *   - a row with a plot number and nothing else = a plot with no trees.
+ */
+function parseTreeCsv(csvContent) {
+    const lines = splitCsvRecords(String(csvContent).replace(/^﻿/, ''));
+    let headerIndex = -1, headers = [];
+    for (let i = 0; i < lines.length; i++) {
+        const norm = lines[i].trim().toLowerCase().split(',').map(h => h.trim().replace(/\s/g,''));
+        if (norm.includes('plotnumber') && norm.includes('dbh') && norm.includes('species') && norm.includes('logs') && norm.includes('cut')) {
+            headerIndex = i;
+            headers = lines[i].trim().split(',').map(h => h.trim().toLowerCase());
+            break;
+        }
+    }
+    if (headerIndex === -1) throw new Error("CSV header not found. Requires: PlotNumber, DBH, Species, Logs, Cut");
+    const idx = {
+        p: headers.indexOf('plotnumber'), d: headers.indexOf('dbh'), sp: headers.indexOf('species'),
+        l: headers.indexOf('logs'), c: headers.indexOf('cut'), n: headers.indexOf('notes'),
+        lat: headers.indexOf('latitude'), lon: headers.indexOf('longitude'), ugs: headers.indexOf('ugs')
+    };
+    const isYes = s => /^(yes|y|x|c|1|cut|true|✓)$/i.test(String(s || '').trim());
+    const isDitto = s => s === '"' || s === "''";
+    const parsedData = [];
+    let prev = null;        // the previous tree row's cells (dittos already filled in)
+    let lastPlot = null;    // the previous tree row's plot (for a blank PlotNumber)
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('---')) { prev = null; lastPlot = null; continue; } // report sections below the trees
+        if (!line || /^[,\s]*$/.test(line)) continue;
+        const values = []; let cur = '', inQ = false;
+        for (let j = 0; j < line.length; j++) {
+            const c = line[j], nc = line[j+1];
+            if (c==='"' && inQ && nc==='"') { cur+='"'; j++; }
+            else if (c==='"') { inQ=!inQ; }
+            else if (c===',' && !inQ) { values.push(cur.trim()); cur=''; }
+            else cur += c;
+        }
+        values.push(cur.trim());
+        if (values.length <= Math.max(idx.p,idx.d,idx.sp,idx.l,idx.c)) continue;
+        for (let k = 0; k < values.length; k++) if (isDitto(values[k])) values[k] = prev ? (prev[k] ?? '') : '';
+        for (const k of [idx.sp, idx.n]) if (k > -1 && values[k] != null) values[k] = csvUnguard(values[k]);
+        // "none" in Species with no DBH (as the printable plot sheet says) = a plot with no trees.
+        if (/^(none|no trees|no tally)$/i.test((values[idx.sp] || '').trim()) && !(parseFloat(values[idx.d]) > 0)) values[idx.sp] = '';
+        try {
+            const plotRaw = values[idx.p];
+            let plotNum = parseInt(plotRaw, 10);
+            if (isNaN(plotNum)) {
+                const hasTree = [idx.sp, idx.d, idx.l].some(k => (values[k] || '').trim());
+                if (plotRaw !== '' || lastPlot === null || !hasTree) { if (plotRaw !== '') { prev = null; lastPlot = null; } continue; }
+                plotNum = lastPlot;
+                values[idx.p] = String(plotNum);
+            }
+            prev = values.slice();
+            lastPlot = plotNum;
+            const cutStr = (values[idx.c] || 'No').trim();
+            const ugsStr = (idx.ugs > -1 && values[idx.ugs]) ? values[idx.ugs].trim() : 'No';
+            const lat = idx.lat > -1 ? parseFloat(values[idx.lat]) : null;
+            const lon = idx.lon > -1 ? parseFloat(values[idx.lon]) : null;
+            const location = (lat!==null && lon!==null && !isNaN(lat) && !isNaN(lon)) ? {lat,lon} : null;
+            const noTree = ![idx.sp, idx.d, idx.l].some(k => (values[k] || '').trim());
+            if ((values[idx.sp] || '').trim().toUpperCase() === 'EMPTY PLOT' || noTree) {
+                parsedData.push({ id: Date.now() + i, emptyPlot: true, plotNumber: plotNum, dbh: '', species: '', logs: '', cutStatus: 'No', ugsStatus: 'No', notes: '', location });
+                continue;
+            }
+            const logsRaw = values[idx.l];
+            parsedData.push({
+                id: Date.now() + i, plotNumber: plotNum, dbh: values[idx.d], species: values[idx.sp],
+                logs: /^c(ull)?$/i.test(logsRaw || '') ? 'Cull' : logsRaw, cutStatus: isYes(cutStr)?'Yes':'No',
+                ugsStatus: isYes(ugsStr)?'Yes':'No',
+                notes: idx.n > -1 ? (values[idx.n]||'') : '',
+                location
+            });
+        } catch(e) { continue; }
+    }
+    return parsedData;
+}
+
 (function () {
     'use strict';
 
